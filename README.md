@@ -1,0 +1,90 @@
+# CLsat workflow
+
+Analysis pipeline for **CLsat** and **DarSat** satellite DNA across six *Darevskia*
+lizard genome assemblies — tandem-repeat discovery, locus boundary resolution,
+subfamily arbitration, and cross-assembly flank orthology.
+
+Companion code for *"Locus-resolved comparative analysis of minisatellite-scale
+satellite DNA in bisexual and hybrid parthenogenetic Darevskia lizards."*
+
+Interactive viewer: **[toki-bio.github.io/CLsat-viewer](https://toki-bio.github.io/CLsat-viewer/)**
+
+---
+
+## Reproducibility
+
+The pipeline was re-run from scratch in a clean directory, starting only from the raw
+TRF output, and compared against the published catalogue at every stage:
+
+| | Reproduced | Published |
+|---|---|---|
+| MASTER loci | 540 | 540 |
+| **Segmented loci** | **626** | **626** |
+| Total span | 68.3995 Mb | 68.4212 Mb |
+
+Motif extraction through cross-species clustering is **byte-identical** (including the
+centroids file, same md5); seed BEDs reproduce exactly (750 / 288 / 101 / 44, zero
+coordinate differences). Span agreement **99.968%**.
+
+Remaining differences — eight loci that differ at boundaries on megabase arrays, and
+one scaffold-terminal telomeric region that TRF cannot scan in practical time — are
+documented explicitly in [PIPELINE.md](PIPELINE.md#reproduction-report) rather than
+smoothed over.
+
+---
+
+## Pipeline
+
+```
+TRF (.dat)
+   │
+   ├─ 01  motif extraction → simple-repeat filter → canonical rotation
+   │      → per-species clustering (vsearch) → MAFFT rotation
+   │
+   ├─ 02  cross-species clustering → CLsat1–4 family assignment
+   │      → seed BEDs → boundary expansion + monomer-resolution scan
+   │
+   ├─ 03  MASTER locus universe → symmetric 4-family rescan
+   │      → segmentation + family arbitration
+   │
+   ├─ 04  flank extraction → classification → cross-assembly orthology
+   │
+   ├─ 05  sub-subfamily calls, terminal monomers, boundary phase
+   │
+   └─ 06  85 Mb scaffold recovery, edge refinement, re-arbitration
+```
+
+| Directory | Stage |
+|---|---|
+| `01_discovery_clustering/` | Steps 3–7 — motifs to per-species clusters |
+| `02_seed_expansion_scan/` | Steps 8–11 — seeds to expanded, scanned arrays |
+| `03_master_arbitration/` | Steps 12–14 — MASTER catalogue and family calls |
+| `04_flank_orthology/` | Cross-assembly positional orthology from unique flanks |
+| `05_subfamily_terminal_boundary/` | Sub-subfamilies, array ends, phase |
+| `06_catalogue_finalize/` | Recovery, refinement, final arbitration |
+| `viewer/` | Single-file D3 viewer and its JSON data products |
+
+Full per-script documentation, exact commands, and parameters: **[PIPELINE.md](PIPELINE.md)**
+
+---
+
+## Requirements
+
+TRF · VSEARCH · MAFFT · FASTA (`ssearch36`) · EMBOSS · BLAST+ · samtools · bedtools ·
+GNU parallel · Python 3 (numpy, pandas) · `gawk`
+
+Exact versions used are listed in [PIPELINE.md](PIPELINE.md#software-versions).
+
+## Notes
+
+- Use `clisat_expand_then_scan_merged.sh` (the `cli_v6` boundary-expansion script).
+  Earlier `cli.sh` variants contain a `--min-aln-frac` bug that truncates CLsat1 walks.
+- Steps 3–10 run in minutes; boundary expansion and the symmetric rescan are the
+  expensive stages (~1.5 h and ~3 h at `--jobs 16` on a 64-core host).
+- The CLsat family assignment (Step 9) derives from curated tree inspection and is
+  deposited as an explicit cluster→family table, not re-derived from a threshold.
+
+## Citation
+
+Please cite the manuscript. Genome assemblies analysed are public under the accessions
+listed in the paper.
