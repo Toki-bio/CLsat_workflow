@@ -127,14 +127,22 @@ Arbitration parameters: `DELTA=20` (seed/rescan contradiction), `DELTA_AMBIG=15`
 
 ### 04 — Flank orthology
 
-`extract_flanks.sh` (600 bp both sides, excluding windows overlapping another
-annotated locus) → `flank_classify.py` (unique / telomeric / low-complexity /
-scaffold-truncated) → `flank_ortho_blast.sh` (all-vs-all `ssearch36 -m 8C`, **not**
-restricted to same-side comparisons) → `build_ortho_json.py` → `ortho_matrix.py`.
+`clean_ortho_pairs.py` is self-contained and authoritative: it rebuilds the loci,
+extracts 600 bp flanks **with the overlap guard** (a flank may not fall inside another
+annotated locus), classifies them (unique / telomeric / low-complexity /
+scaffold-truncated), and compares the unique ones all-vs-all with `ssearch36 -m 8C`,
+keeping the single best cross-assembly hit per target assembly at ≥200 bp aligned and
+≥80% identity. `rebuild_ortho_segmented.py` applies the same method to the segmented
+catalogue and returns the identical result.
 
 > Comparisons are deliberately all-vs-all: flanks are oriented array→outward, so two
 > orthologous arrays in opposite orientations legitimately match left-flank to
 > right-flank. Restricting to same-side pairs discards real inverted orthologs.
+
+> **Do not use `superseded_blastn/`.** Those scripts are the earlier blastn-based
+> method, kept only for provenance. They lack the flank overlap guard and restrict
+> comparisons to the same side, which yields 45 pairs rather than the correct 53. See
+> that directory's README.
 
 ### 05 — Sub-subfamily, terminal monomers, boundary phase
 
