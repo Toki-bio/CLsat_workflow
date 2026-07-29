@@ -74,6 +74,7 @@ TRF (.dat)
 | `04_flank_orthology/` | Cross-assembly positional orthology from unique flanks |
 | `05_subfamily_terminal_boundary/` | Sub-subfamilies, array ends, phase |
 | `06_catalogue_finalize/` | Recovery, refinement, final arbitration |
+| `07_post_catalogue/` | Checks run after the catalogue: singleton screen (recovered L541), the seven uncatalogued candidate arrays, the IMO-TaqI identity test, Figure 2 |
 | `viewer/` | Single-file D3 viewer and its JSON data products |
 
 Full per-script documentation, exact commands, and parameters: **[PIPELINE.md](PIPELINE.md)**
