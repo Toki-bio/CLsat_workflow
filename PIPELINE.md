@@ -193,7 +193,7 @@ every stage.
 
 **Catalogue totals**
 
-| | De novo | Published |
+| | De novo | Pipeline output |
 |---|---|---|
 | Raw MASTER loci | 540 | 540 |
 | Segmented loci | 626 | 626 |
@@ -202,6 +202,17 @@ every stage.
 | CLsat1 / CLsat3 loci | 429 / 98 | 430 / 97 |
 
 Span agreement: **99.968%**.
+
+> **The manuscript reports 627 segmented / 541 MASTER loci.** The extra locus is **L541**
+> (mix, `JAWWNH010000226.1:1–43,510`), which this pipeline does **not** and cannot produce.
+> Its TRF monomer is reported in the opposite orientation to the other mix CLsat3 monomers,
+> and Step 6 runs `vsearch --strand plus`, so it stayed a singleton locus and never reached
+> the cross-assembly pass that generates seeds (Step 8). It was recovered afterwards by
+> screening all 979 singleton loci against the four CLsat consensuses — 14 scored above the
+> 50-bit floor, seven of which already lay inside catalogued loci — and added by hand.
+> Everything above measures the code; the published catalogue is the code's output plus
+> that one locus. The seven further singleton loci that the same screen found *outside* the
+> catalogue are reported in the manuscript but deliberately excluded from it.
 
 ### Known, documented deviations
 

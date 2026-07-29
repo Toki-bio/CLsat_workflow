@@ -16,11 +16,23 @@ Interactive viewer: **[toki-bio.github.io/CLsat-viewer](https://toki-bio.github.
 The pipeline was re-run from scratch in a clean directory, starting only from the raw
 TRF output, and compared against the published catalogue at every stage:
 
-| | Reproduced | Published |
+| | Reproduced | Pipeline output |
 |---|---|---|
 | MASTER loci | 540 | 540 |
 | **Segmented loci** | **626** | **626** |
 | Total span | 68.3995 Mb | 68.4212 Mb |
+
+> **Why the manuscript reports 627 / 541, not 626 / 540.** One further locus — **L541**
+> (mix, `JAWWNH010000226.1:1–43,510`; ~298 monomers; CLsat3 at 127.8 bits, 33.6 bits clear
+> of the next family) — is **not a product of this pipeline and is not reproduced by it**.
+> Its TRF monomer is reported in the orientation opposite to the other mix CLsat3 monomers
+> (98.6 % identical as reverse complement, 39.7 % same-strand), and per-assembly clustering
+> runs `vsearch --strand plus`, so it could not join a cluster, remained a singleton locus,
+> and never entered the cross-assembly pass that generates seeds. It was recovered by a
+> retrospective screen of all 979 singleton loci against the four CLsat consensuses
+> (Methods §3.1) and added to the catalogue by hand. The table above is therefore the
+> correct measure of what the code does; the published catalogue is that plus one
+> hand-added locus.
 
 Motif extraction through cross-species clustering is **byte-identical** (including the
 centroids file, same md5); seed BEDs reproduce exactly (750 / 288 / 101 / 44, zero
