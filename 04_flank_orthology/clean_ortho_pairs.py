@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """CLEAN flank-orthology from the fixed loci, with per-pair FASTA alignments for manual audit.
 
-Replaces the contaminated published orthology entirely (per user: "old data is AI-generated
-crap"). Chain:
+Replaces the contaminated published orthology entirely. Chain:
   1. loci = v6 CLsat1 (MIN_ALN fixed) + published CLsat2/3/4, merged per species+scaffold
   2. for each locus, take flanks OUTSIDE the array; OVERLAP GUARD: a flank may not overlap any
      other locus (this is the bug that contaminated 35% of the old 'unique' flanks)
