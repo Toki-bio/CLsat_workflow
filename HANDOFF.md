@@ -29,6 +29,15 @@ Pending items that need the analysis server (`/staging/...`, conda env `bioinfo`
 
 Owner decisions already taken, do not reopen: `SEG_SHORT=drop` is the published behaviour (merge is opt-in); `MIN_MONOMERS_PER_ARRAY=3` in the viewer vs 4 in searsat16 is intentional and documented; the Step-5 plus-strand canonicalisation is deliberate; branch-3 contradictions keep the seed family.
 
+### Progress log
+
+- 2026-10-15 — **step 3 done** (branch `satpipe`): package `satpipe/` (schema, config loader, `satpipe check`,
+  tool registry, stage registry, CLI), `configs/darevskia_clsat.yaml`, `docs/config.md`, `docs/files.md`,
+  `tests/` (19 pytest tests, synthetic data). Stage scripts moved to `satpipe/stages/` unchanged; superseded
+  code to `legacy/`. Server paths in the Darevskia config are from the project's records and **not yet
+  verified** (server unreachable from that session) — run `satpipe check configs/darevskia_clsat.yaml` on the
+  server before step 4. `satpipe run` / `viewer` are stubs.
+
 ## The pipeline as it is
 
 Stages run in this order; each row is the contract a refactor must keep. "Hand" marks a curated input that cannot be derived automatically and must become an explicit, validated file.
@@ -138,7 +147,7 @@ Do not:
 
 Decisions the owner must make before or during the refactor:
 
-- [ ] Repository layout: rename `CLsat_workflow` to the tool name, or create a new repo and keep `CLsat_workflow` as the frozen manuscript deposit (recommended: new repo + tag the deposit).
+- [x] Repository layout — **decided 2026-10-15 by the owner: the tool replaces `CLsat_workflow` in place.** The deposit is frozen as tag `manuscript-deposit` (= former `main` @ `80dd458`); stage scripts moved with `git mv` to `satpipe/stages/`; superseded code in `legacy/`. The GitHub repository name is unchanged (renaming is still open; GitHub redirects a renamed repository).
 - [ ] Tool name and licence (none declared today; README says "academic and research use").
 - [ ] Driver: plain Python stage runner vs Snakemake.
 - [ ] Whether the viewer stays a single file or splits into `index.html` + `viewer.js` + `viewer_config.json` (single file is a feature for deployment; a separate config is needed either way).

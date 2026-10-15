@@ -1,5 +1,11 @@
 # CLsat / DarSat analysis pipeline — code deposit
 
+> **Layout note (2026-10-15).** The stage directories `01_discovery_clustering/` ...
+> `07_post_catalogue/` referred to below now live under `satpipe/stages/` with the same names,
+> as this repository is being turned into the reusable tool `satpipe` (see `README.md`,
+> `HANDOFF.md`). The code exactly as deposited for the manuscript is tag `manuscript-deposit`.
+> Superseded code (`superseded_blastn/`, `expand_clsats.sh`) is in `legacy/`.
+
 Custom code underlying *"Locus-resolved comparative analysis of minisatellite-scale
 satellite DNA in bisexual and hybrid parthenogenetic *Darevskia* lizards"*.
 

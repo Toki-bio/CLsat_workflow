@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "satpipe"
+version = "0.1.0.dev0"
+description = "Reusable satellite-DNA locus pipeline: config, driver, viewer config (from the CLsat/DarSat workflow)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=5.4"]
+# licence: not declared yet (owner decision, see HANDOFF.md "open decisions")
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+satpipe = "satpipe.cli:main"
+
+[tool.setuptools]
+packages = ["satpipe", "satpipe.stages"]
+
+[tool.setuptools.package-data]
+satpipe = ["stages/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,118 +1,96 @@
-# CLsat workflow
+# CLsat workflow → satpipe
 
-Analysis pipeline for **CLsat** and **DarSat** satellite DNA across six *Darevskia*
-lizard genome assemblies — tandem-repeat discovery, locus boundary resolution,
-subfamily arbitration, and cross-assembly flank orthology.
+A reusable satellite-DNA locus pipeline: one config file, one driver, stage-level inputs and
+outputs, and the same viewer ([Toki-bio/CLsat-viewer](https://github.com/Toki-bio/CLsat-viewer))
+served from a run's output directory. It is the CLsat/DarSat analysis code from
+*"Locus-resolved comparative analysis of minisatellite-scale satellite DNA in bisexual and hybrid
+parthenogenetic Darevskia lizards"*, being made runnable on other genomes and other satellite
+families. The published Darevskia catalogue is the regression test: the Darevskia config must
+reproduce it to the tolerances in [PIPELINE.md](PIPELINE.md).
 
-Companion code for *"Locus-resolved comparative analysis of minisatellite-scale
-satellite DNA in bisexual and hybrid parthenogenetic Darevskia lizards."*
+**Manuscript code deposit.** The code exactly as deposited for the manuscript is tag
+[`manuscript-deposit`](../../tree/manuscript-deposit) (the former `main`). Its reproduction
+report and every later change that can alter published numbers are in [PIPELINE.md](PIPELINE.md),
+which remains the scientific record. The same scripts now live under `satpipe/stages/` with their
+original directory names; `git log --follow` gives their history.
 
-Interactive viewer: **[toki-bio.github.io/CLsat-viewer](https://toki-bio.github.io/CLsat-viewer/)**
+`satpipe` is a working name. The final name and the licence are owner decisions
+(see [HANDOFF.md](HANDOFF.md), "open decisions").
 
----
+## Status (work-plan step 3 of 10, 2026-10-15)
 
-## Reproducibility
-
-The pipeline was re-run from scratch in a clean directory, starting only from the raw
-TRF output, and compared against the published catalogue at every stage:
-
-| | Reproduced | Pipeline output |
-|---|---|---|
-| MASTER loci | 540 | 540 |
-| **Segmented loci** | **626** | **626** |
-| Total span | 68.3995 Mb | 68.4212 Mb |
-
-> **Why the manuscript reports 627 / 541, not 626 / 540.** One further locus — **L541**
-> (mix, `JAWWNH010000226.1:1–43,510`; ~298 monomers; CLsat3 at 127.8 bits, 33.6 bits clear
-> of the next family) — is **not a product of this pipeline and is not reproduced by it**.
-> Its TRF monomer is reported in the orientation opposite to the other mix CLsat3 monomers
-> (98.6 % identical as reverse complement, 39.7 % same-strand), and per-assembly clustering
-> runs `vsearch --strand plus`, so it could not join a cluster, remained a singleton locus,
-> and never entered the cross-assembly pass that generates seeds. It was recovered by a
-> retrospective screen of all 979 singleton loci against the four CLsat consensuses
-> (Methods §3.1) and added to the catalogue by hand. The table above is therefore the
-> correct measure of what the code does; the published catalogue is that plus one
-> hand-added locus.
-
-Motif extraction through cross-species clustering is **byte-identical** (including the
-centroids file, same md5); seed BEDs reproduce exactly (750 / 288 / 101 / 44, zero
-coordinate differences). Span agreement **99.968%**.
-
-Remaining differences — eight loci that differ at boundaries on megabase arrays, and
-one scaffold-terminal telomeric region that TRF cannot scan in practical time — are
-documented explicitly in [PIPELINE.md](PIPELINE.md#reproduction-report) rather than
-smoothed over.
-
----
-
-## Pipeline
-
-```
-TRF (.dat)
-   │
-   ├─ 01  motif extraction → simple-repeat filter → canonical rotation
-   │      → per-species clustering (vsearch) → MAFFT rotation
-   │
-   ├─ 02  cross-species clustering → CLsat1–4 family assignment
-   │      → seed BEDs → boundary expansion + monomer-resolution scan
-   │
-   ├─ 03  MASTER locus universe → symmetric 4-family rescan
-   │      → segmentation + family arbitration
-   │
-   ├─ 04  flank extraction → classification → cross-assembly orthology
-   │
-   ├─ 05  sub-subfamily calls, terminal monomers, boundary phase
-   │
-   └─ 06  85 Mb scaffold recovery, edge refinement, re-arbitration
-```
-
-| Directory | Stage |
+| part | state |
 |---|---|
-| `01_discovery_clustering/` | Steps 3–7 — motifs to per-species clusters |
-| `02_seed_expansion_scan/` | Steps 8–11 — seeds to expanded, scanned arrays |
-| `03_master_arbitration/` | Steps 12–14 — MASTER catalogue and family calls |
-| `04_flank_orthology/` | Cross-assembly positional orthology from unique flanks |
-| `05_subfamily_terminal_boundary/` | Sub-subfamilies, array ends, phase |
-| `06_catalogue_finalize/` | Recovery, refinement, final arbitration |
-| `07_post_catalogue/` | Checks run after the catalogue: singleton screen (recovered L541), the seven uncatalogued candidate arrays, the IMO-TaqI identity test, Figure 2 |
-| `viewer/` | Pointer to the viewer repository and a map of which script produces each data product |
+| stage scripts | moved with `git mv` from the top level into `satpipe/stages/`, contents unchanged ([PROVENANCE.md](PROVENANCE.md)); superseded code in `legacy/`; the scripts still carry `/staging/...` paths (step 4 strips them) |
+| `config.yaml` schema | done: `satpipe/schema.py`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
+| `satpipe check` | done: schema, cross-key checks, input files (genomes, TRF `.dat`, consensus length vs `mono`, curated cluster table, sub-subfamily consensuses, manual loci), external tools with versions |
+| `satpipe run`, `satpipe viewer` | not implemented (steps 5-8); they exit 2 with a message |
+| Darevskia config | `configs/darevskia_clsat.yaml`; schema-valid; **file paths not yet verified on the server** (see the comment block at its top) |
+| tests | `pytest`: 19 tests on a synthetic project, no external tools needed |
 
-Full per-script documentation, exact commands, and parameters: **[PIPELINE.md](PIPELINE.md)**
+## Install
 
----
+```bash
+git clone https://github.com/Toki-bio/CLsat_workflow && cd CLsat_workflow
+python3 -m pip install -e ".[test]"      # Python >= 3.10, PyYAML
+satpipe --version
+python3 -m pytest
+```
 
-## Requirements
+The pipeline itself needs TRF, VSEARCH, MAFFT, FASTA (`ssearch36`), samtools, bedtools, GNU
+parallel, `gawk` (not mawk) and, for optional stages, EMBOSS and BLAST+. `satpipe check` reports
+which are missing and which stages they block.
 
-TRF · VSEARCH · MAFFT · FASTA (`ssearch36`) · EMBOSS · BLAST+ · samtools · bedtools ·
-GNU parallel · Python 3 (numpy) · `gawk` (≥ 4.0, for `PROCINFO["sorted_in"]` and `asorti`)
+## Use
 
-Exact versions used are listed in [PIPELINE.md](PIPELINE.md#software-versions).
+```bash
+satpipe check configs/darevskia_clsat.yaml          # schema + files + tools; exit 1 on any failure
+satpipe check my.yaml --no-tools                    # author a config on a machine without the tools
+satpipe check my.yaml --no-files --json             # machine-readable
+satpipe config my.yaml                              # normalised config: defaults filled, paths resolved
+satpipe config --schema-doc > docs/config.md        # regenerate the reference
+satpipe stages                                      # stage contracts and wiring status
+```
 
-## Notes
+Minimal config ([configs/example_minimal.yaml](configs/example_minimal.yaml)):
 
-- Use `clisat_expand_then_scan_merged.sh` (the `cli_v6` boundary-expansion script).
-  Earlier `cli.sh` variants contain a `--min-aln-frac` bug that truncates CLsat1 walks.
-- Steps 3–10 run in minutes; boundary expansion and the symmetric rescan are the
-  expensive stages (~1.5 h and ~3 h at `--jobs 16` on a 64-core host).
-- The CLsat family assignment (Step 9) derives from curated tree inspection and is
-  deposited as an explicit cluster→family table (`02_seed_expansion_scan/cluster_family.tsv`),
-  not re-derived from a threshold.
-- Steps 5, 8 and 9 are scripts (`Step5.sh`, `Step8_cross_cluster.sh`, `Step9_family_fasta.sh`);
-  `cli_v6.sh` / `cli.sh` referenced by the stage-06 drivers are links to
-  `clisat_expand_then_scan_merged.sh`. The four CLsat consensuses are in
-  `02_seed_expansion_scan/consensus/`; `genomes.example.tsv` shows the `genomes.tsv` format.
-- Not deposited, because they exist only on the analysis server: the phase-rotated reference
-  file `CLsat_cons.rot` used in Step 8 (the rotated form of the four consensuses above) and
-  the sub-subfamily consensus FASTA (`subx/`) that `assign_subfamily.sh` reads.
-- Every script carries the absolute `/staging/...` paths of the original run; set the path
-  variables at the top of each script before running elsewhere.
-- 2026-10-15 audit fixes that change numbers on a re-run and must be checked against the
-  published catalogue: `Step4.sh` interval sort (coverage filter), `assign_subfamily.sh`
-  float comparison (four low-confidence sub-subfamily calls), the D3b bin index (`pos-1`),
-  `terminal_monomers.sh` (rewritten; the previous output did not measure terminal monomers).
-  See PIPELINE.md "Changes after the reproduction report".
+```yaml
+run_name: my_satellite_run
+out_dir: runs/my_satellite_run
+genomes:
+  spA: /data/genomes/species_A.fna
+  spB: /data/genomes/species_B.fna
+families:
+  SatX: {consensus: ref/SatX.cons.fa, mono: 180}
+family_assignment: ref/cluster_family.tsv   # curated cluster -> family table, filled after stage 08
+```
 
-## Citation
+Everything not set takes the published Darevskia value, so the behaviour of a minimal config is
+the published method applied to new data. Relative paths resolve against the config file's
+directory. Unknown keys are errors.
 
-Please cite the manuscript. Genome assemblies analysed are public under the accessions
-listed in the paper.
+## Layout
+
+```
+satpipe/            Python package: cli, config, schema, check, tools, stages registry
+satpipe/stages/     the stage scripts, by original directory (01_ ... 07_); consensuses and
+                    the curated cluster_family.tsv are in 02_seed_expansion_scan/
+configs/            darevskia_clsat.yaml (regression target), example_minimal.yaml
+ref/darevskia/      manual_loci.bed (L541, the hand-added locus)
+legacy/             superseded code kept for provenance (not current)
+viewer/             pointer to the viewer repository; data-product -> producer table
+docs/config.md      generated schema reference
+docs/files.md       intermediate files per stage (columns, coordinate frames)
+tests/              pytest suite (synthetic data)
+PIPELINE.md         scientific record: reproduction report, changes after it
+HANDOFF.md          mission, conventions, target design, ordered work plan, do-not list
+PROVENANCE.md       what moved where; the manuscript-deposit tag
+```
+
+## Conventions that must not change
+
+From HANDOFF.md, in short: BED and JSON loci are 0-based half-open; TRF, `samtools faidx` and
+ssearch36 `-m 8C` coordinates are 1-based; Δ = assigned-family bits − strongest other family;
+`LC_ALL=C` everywhere a sort decides locus numbering; `gawk` required; never change a default
+that alters the published catalogue (`short_segments: drop`, plus-strand canonicalisation,
+coarse-probe test, scaffold-end handling) — add an option with the published value as default.

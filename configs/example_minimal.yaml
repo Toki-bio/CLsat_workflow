@@ -1,0 +1,11 @@
+# Smallest valid config: every other parameter takes the published Darevskia default.
+# Replace the paths; species codes and family names are yours.
+run_name: my_satellite_run
+out_dir: runs/my_satellite_run
+genomes:
+  spA: /data/genomes/species_A.fna
+  spB: /data/genomes/species_B.fna
+families:
+  SatX: {consensus: ref/SatX.cons.fa, mono: 180}
+# curated cluster -> family table; run stages 03-08 first, inspect the centroid tree, then fill it
+family_assignment: ref/cluster_family.tsv

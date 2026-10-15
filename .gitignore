@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+runs/
+# uncompressed bitscore tables and archives never go in (HANDOFF.md do-not list)
+*.bits.tsv
+index_*

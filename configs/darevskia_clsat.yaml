@@ -1,0 +1,114 @@
+# satpipe config for the published Darevskia CLsat run (the regression target).
+#
+# Server paths (analysis server, /staging) were taken from the project's own records on
+# 2026-10-15; the server was unreachable in the session that wrote this file, so run
+#   satpipe check configs/darevskia_clsat.yaml
+# on the server and fix any path it reports before anything else. Two alternative directory
+# names exist for most genomes (e.g. arm/ and dar/, val/ and dval/); the ones below follow the
+# species code. Parameters are the published values (schema defaults) and are written out
+# explicitly here so the run is self-describing.
+
+run_name: darevskia_clsat
+out_dir: /staging/tmp/satpipe/darevskia_clsat
+
+genomes:
+  arm: /staging/Sergei/Lacertidae/Darevskia/arm/GCA_034641395.1_Dar_arm_1.0_genomic.fna
+  mix: /staging/Sergei/Lacertidae/Darevskia/mix/GCA_034641385.1_Dar_mix_1.0_genomic.fna
+  nai: /staging/Sergei/Lacertidae/Darevskia/nai/GCA_034642065.1_Dar_nair_1.0_genomic.fna
+  unm: /staging/Sergei/Lacertidae/Darevskia/unm/GCA_032766585.1_D.uni.mHiFi.1.0_genomic.fna
+  unp: /staging/Sergei/Lacertidae/Darevskia/unp/GCA_032766555.1_D.uni.pHiFi.1.0_genomic.fna
+  val: /staging/Sergei/Lacertidae/Darevskia/val/GCA_034642135.1_Dar_val_2.0_genomic.fna
+
+inputs:
+  # The published run starts from these TRF .dat files (Step 3 names its output by the .dat
+  # basename, so the files used were <code>.dat links). UNVERIFIED: confirm on the server that
+  # Satellites/<code>.dat exist and that unp.dat is the file without the 85 Mb scaffold
+  # (unp.no_scf3.fna...dat), which the 85mb_recovery stage then supplements.
+  trf_dat:
+    arm: /staging/Sergei/Lacertidae/Darevskia/Satellites/arm.dat
+    mix: /staging/Sergei/Lacertidae/Darevskia/Satellites/mix.dat
+    nai: /staging/Sergei/Lacertidae/Darevskia/Satellites/nai.dat
+    unm: /staging/Sergei/Lacertidae/Darevskia/Satellites/unm.dat
+    unp: /staging/Sergei/Lacertidae/Darevskia/Satellites/unp.dat
+    val: /staging/Sergei/Lacertidae/Darevskia/Satellites/val.dat
+
+families:
+  CLsat1: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat1.cons.fa, mono: 146, colour: "#1f77b4"}
+  CLsat2: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat2.cons.fa, mono: 145, colour: "#ff7f0e"}
+  CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#2ca02c"}
+  CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#d62728"}
+
+references:
+  # Not deposited in CLsat_workflow (HANDOFF.md pending items); exists only on the server.
+  rotated_consensus: /staging/Sergei/Lacertidae/Darevskia/Satellites/CLUSTERS/CLsat/consi_CLsat_original/CLsat_cons.rot
+
+discovery:
+  trf: "2 5 7 80 10 50 2000"
+  period: [80, 300]
+  min_copies: 10
+  simple_repeat_cov: 50
+  strand: plus            # deliberate; plus-only is what left L541 unclustered
+  cluster_id: 0.90
+  cross_cluster_id: 0.90
+
+family_assignment: ../satpipe/stages/02_seed_expansion_scan/cluster_family.tsv
+
+expansion:
+  min_bits: 50
+  min_aln_frac: 0.67
+  step_mono: 3
+  win_mono: 3
+  query_repeat: 2
+  probe_mono: 100
+  probe_min_step: 50
+  max_steps: 500
+  to_scaffold_ends: false
+  jobs: 16
+
+scan: {win_mono: 2, step_mono: 1, min_bits: 0}
+
+arbitration:
+  delta: 20
+  delta_ambig: 15
+  seg_bin: 1000
+  seg_min_run: 10
+  seg_min_locus: 2000
+  short_segments: drop    # published behaviour; merge is opt-in
+
+orthology: {flank_bp: 600, guard_bp: 0, min_aln: 200, min_pid: 80}
+
+subfamily:
+  # sub-subfamily consensus FASTA directory (subx/), not deposited; server only
+  consensuses: /staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/CLsat_full_clusters_6genome/flank_analysis/subx
+  members:
+    CLsat1: [CLsat1.1, CLsat1.2, CLsat1.3, CLsat1.4, CLsat1.5]
+    CLsat2: [CLsat2]
+    CLsat3: [CLsat3.1, CLsat3.2]
+    CLsat4: [CLsat4]
+  confident_delta: 10
+
+terminal: {window_mono: 1.5, edge_tol: 10}
+
+finalisation:
+  large_scaffold_bp: 50000000   # the 85.83 Mb unp scaffold JAWDKN010000003.1 exceeds TRF's practical limit
+  chunk_bp: 2000000
+  overlap_bp: 50000
+  edge_tol: 50
+  rearbitrate: true
+
+# L541 (mix, JAWWNH010000226.1:1-43,510) was added by hand; see ref/darevskia/manual_loci.bed
+manual_loci: ../ref/darevskia/manual_loci.bed
+
+tools:
+  bin_dir: /staging/conda/envs/bioinfo/bin
+  trf: /staging/miniconda3/bin/trf
+
+viewer:
+  title: "CLsat loci in Darevskia genomes"
+  species_names:
+    arm: D. armeniaca
+    mix: D. mixta
+    nai: D. nairensis (GCA_034642065.1, strain 215)
+    unm: D. unisexualis haplotype m (unm)
+    unp: D. unisexualis haplotype p (unp)
+    val: D. valentini
