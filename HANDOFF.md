@@ -53,6 +53,32 @@ Owner decisions already taken, do not reopen: `SEG_SHORT=drop` is the published 
   within a noise band (`compare_noise.py`). Not covered by the toy: stage 02 (TRF on genomes), finalisation
   scripts, stage 07 scripts (syntax-checked only).
 
+- 2026-10-15 — owner: "run to the victory, use therioserver instead of DRAGEN". **Steps 5–8 done**, 9–10 in progress:
+  - `satpipe run` (satpipe/run.py): stages 00 tables, 02 TRF per scaffold in parallel (given `.dat` files
+    symlinked instead), 02b chunked TRF + candidate classification of scaffolds above `large_scaffold_bp`
+    → recovered seeds, 03–08, 09 curated-table validation + `cross/cluster_report.tsv`, 10 seeds, 11 expansion,
+    12 MASTER, 13 rescan, 14 arbitration, 15 catalogue (+ manual loci, tagged MANUAL, numbered after the
+    pipeline loci, scanned for their bits), 16 regions, 17 terminal/phase, 18 sub-subfamily (empty table
+    when no consensus set), 19 orthology. DONE markers (input fingerprints + config-section hash), `manifest.json`
+    (config, tool versions, code commit, counts, centroid md5). `tests/toy/run_driver_toy.sh` passes against the
+    equivalence harness.
+  - `satpipe viewer` (satpipe/viewer.py): writes `<run>/viewer/` = data files in the viewer's formats (segmented
+    catalogue with ids, gzip tracks, ±5 kb flank background scan, JSON products, scaffold lengths, consensuses),
+    `viewer_config.json` (families/monos/colours/consensus/sub-subfamily sequences, species order+labels,
+    counts, notes, the three inspection lists from satpipe/viewer_lists.py) and the page. The page
+    (`satpipe/viewer_html/index.html` = CLsat-viewer v3.0, made by `tools/patch_viewer_config.py` from v2.25)
+    embeds nothing run-specific. Verified in headless Chrome (`tests/viewer/cdp_test.js`) on the shipped
+    Darevskia data and on the live site; CLsat-viewer `main` now serves v3.0 with a generated `viewer_config.json`.
+    ORTHO_LOCI and FLAGGED_LOCI rebuild identically from the data; the FULL_TABLE "both-sided" flag is now
+    *pair supported by an L- and an R-sourced hit* (11 loci vs 20 in the former table whose script was never
+    deposited; PROVENANCE.md).
+  - Darevskia regression on therioserver (`configs/darevskia_clsat_therioserver.yaml`): six GenBank assemblies
+    downloaded, TRF regenerated per scaffold (same TRF version), 85.8 Mb unp scaffold handled by stage 02b.
+    Not available there: `subx/` (sub-subfamily consensuses, DRAGEN only) and `CLsat_cons.rot` (derived instead).
+    Result: see "Regression result" below once the run has finished.
+  - Molly test (`tests/molly/run_molly.sh`): three families from the revision session's pooled Step-8 families,
+    both 2021 haplotype assemblies, curated table derived from the clusters holding the references.
+
 ## The pipeline as it is
 
 Stages run in this order; each row is the contract a refactor must keep. "Hand" marks a curated input that cannot be derived automatically and must become an explicit, validated file.

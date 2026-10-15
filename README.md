@@ -17,16 +17,18 @@ original directory names; `git log --follow` gives their history.
 `satpipe` is a working name. The final name and the licence are owner decisions
 (see [HANDOFF.md](HANDOFF.md), "open decisions").
 
-## Status (work-plan step 4 of 10, 2026-10-15)
+## Status (work-plan steps 1-8 done, 9-10 in progress, 2026-10-15)
 
 | part | state |
 |---|---|
 | stage scripts | in `satpipe/stages/`, parameterised: inputs from arguments and small tables (`genomes.tsv`, `families.tsv`, `members.tsv`), parameters from environment variables with the published values as defaults; no server path, species code, family name or monomer length in code ([PROVENANCE.md](PROVENANCE.md)); equivalence with the original scripts verified on a synthetic project (`tests/toy/`) |
 | `config.yaml` schema | done: `satpipe/schema.py`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
-| `satpipe check` | done: schema, cross-key checks, input files (genomes, TRF `.dat`, consensus length vs `mono`, curated cluster table, sub-subfamily consensuses, manual loci), external tools with versions |
-| `satpipe run`, `satpipe viewer` | not implemented (steps 5-8); they exit 2 with a message |
-| Darevskia config | `configs/darevskia_clsat.yaml`; schema-valid; **file paths not yet verified on the server** (see the comment block at its top) |
-| tests | `pytest`: 19 tests on a synthetic project, no external tools needed; `tests/toy/run_toy_equivalence.sh`: original-vs-parameterised scripts end to end on synthetic genomes (needs the tools) |
+| `satpipe check` | done: schema, cross-key checks, input files, external tools with versions |
+| `satpipe run` | done: 20 stages from TRF to flank orthology, resumable (DONE markers), `manifest.json`; `--from/--to/--only/--force` |
+| `satpipe viewer` | done: assembles `<run>/viewer/` (data files + `viewer_config.json` + the config-driven page) |
+| Darevskia regression | running on therioserver from the six GenBank assemblies (`configs/darevskia_clsat_therioserver.yaml`); see HANDOFF.md progress log |
+| second test case | Amazon molly (`tests/molly/run_molly.sh`), running |
+| tests | `pytest` (no tools); `tests/toy/` equivalence + driver tests (tools); `tests/viewer/` list rebuild + headless-Chrome page test; CI in `.github/workflows/ci.yml` |
 
 ## Install
 
@@ -46,11 +48,23 @@ which are missing and which stages they block.
 ```bash
 satpipe check configs/darevskia_clsat.yaml          # schema + files + tools; exit 1 on any failure
 satpipe check my.yaml --no-tools                    # author a config on a machine without the tools
-satpipe check my.yaml --no-files --json             # machine-readable
+satpipe run my.yaml                                 # all stages; re-run = resume (DONE markers)
+satpipe run my.yaml --to 08_cross                   # stop after cross-clustering, inspect cross/cluster_report.tsv,
+                                                    #   write the curated cluster -> family table, then run again
+satpipe run my.yaml --from 13_rescan --force        # redo from a stage
+satpipe viewer runs/my_run                          # -> runs/my_run/viewer/ : serve it with any static server
 satpipe config my.yaml                              # normalised config: defaults filled, paths resolved
 satpipe config --schema-doc > docs/config.md        # regenerate the reference
-satpipe stages                                      # stage contracts and wiring status
+satpipe run --list-stages my.yaml                   # stage ids
 ```
+
+A run from scratch: `satpipe run` runs TRF on every genome (stage 02; give `inputs.trf_dat` to skip it),
+extracts and clusters motifs, cross-clusters them with the family references prepended, and stops at
+stage 09 if the curated `family_assignment` table does not match the clusters it found. Look at
+`<run>/cross/cluster_report.tsv` (every cluster with its size, centroid and best family hit), write
+the table, run again. Everything after that is automatic: seeds, expansion, MASTER, rescan,
+arbitration, catalogue (+ manual loci), regions, terminal monomers, sub-subfamilies (if consensuses
+are given), flank orthology, and `satpipe viewer` for the page.
 
 Minimal config ([configs/example_minimal.yaml](configs/example_minimal.yaml)):
 

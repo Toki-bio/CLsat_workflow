@@ -66,6 +66,21 @@ references), the sub-subfamily consensus directory `subx/`, the six TRF `.dat` f
 `configs/darevskia_clsat.yaml` points at their recorded server paths; they were not verified from
 the session that wrote it (server unreachable), so run `satpipe check` there first.
 
+## Viewer (step 8, 2026-10-15)
+
+`satpipe/viewer_html/index.html` is the CLsat-viewer page v2.25 (`audit-fixes` @ 109b38c) transformed
+by `tools/patch_viewer_config.py` into the config-driven v3.0 page; the same file was committed to
+Toki-bio/CLsat-viewer. `satpipe/viewer_lists.py` rebuilds the three inspection lists from the data
+files. Verified against the lists that were embedded in v2.25 (`tests/viewer/compare_embedded.py`):
+ORTHO_LOCI (91) and FLAGGED_LOCI (35) identical; FULL_TABLE identical in every field except
+`both`. **Both-sided:** the manuscript defines high-confidence pairs as "recovered from both flank
+sides (18 of 53)"; the shipped `full_flank_ortho_table.tsv` flags 20 loci, but the script that made
+it was never deposited and no rule reproduces its flags from the shipped `flank_orthologs.json`
+(tested: both own flanks hit; hits in both directions; L+R-sourced support; at 70/80/90 %). The tool
+now defines a both-sided pair as one supported by an L-sourced AND an R-sourced hit in either
+direction, which on the shipped data gives 6 pairs / 11 loci. The manuscript's "18 of 53" cannot be
+reproduced from the deposited files; this is an open point for the owner.
+
 ## Documents
 
 - `PIPELINE.md`: the scientific record (reproduction report, changes after it). Unchanged except
