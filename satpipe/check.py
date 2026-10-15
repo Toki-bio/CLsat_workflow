@@ -199,7 +199,7 @@ def check_files(cfg: Config, report: Report) -> None:
             names = {n for n, _ in read_fasta(p)}
             report.add(OK, "subfamily", f"consensuses: FASTA with {len(names)} records")
         else:
-            report.add(FAIL, "subfamily", f"consensuses: not found: {p}")
+            report.add(WARN, "subfamily", f"consensuses: not found: {p} (the sub-subfamily stage will write an empty table)")
         if names:
             for fam, members in (sub.get("members") or {}).items():
                 lost = [m for m in members if m not in names]

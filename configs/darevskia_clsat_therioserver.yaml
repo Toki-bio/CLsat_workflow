@@ -1,0 +1,52 @@
+# Darevskia CLsat regression run on therioserver (the server actually used for the tool work).
+# Genomes: the six GenBank assemblies downloaded on 2026-10-15 to /home/toki/satpipe_darevskia/genomes.
+# TRF is regenerated here (same TRF version as the published run, 4.10.0-rc.2), so stage 02 runs.
+# Not available on this server: the sub-subfamily consensus set (subx/, only on DRAGEN) -> the
+# sub-subfamily stage writes an empty table; and CLsat_cons.rot -> the Step-8 references are derived
+# by Step-5 rotation of the consensuses (recorded in the manifest).
+run_name: darevskia_clsat_therio
+out_dir: /home/toki/satpipe_darevskia/run
+
+genomes:
+  arm: /home/toki/satpipe_darevskia/genomes/GCA_034641395.1_Dar_arm_1.0_genomic.fna
+  mix: /home/toki/satpipe_darevskia/genomes/GCA_034641385.1_Dar_mix_1.0_genomic.fna
+  nai: /home/toki/satpipe_darevskia/genomes/GCA_034642065.1_Dar_nair_1.0_genomic.fna
+  unm: /home/toki/satpipe_darevskia/genomes/GCA_032766585.1_D.uni.mHiFi.1.0_genomic.fna
+  unp: /home/toki/satpipe_darevskia/genomes/GCA_032766555.1_D.uni.pHiFi.1.0_genomic.fna
+  val: /home/toki/satpipe_darevskia/genomes/GCA_034642135.1_Dar_val_2.0_genomic.fna
+
+families:
+  CLsat1: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat1.cons.fa, mono: 146, colour: "#1f77b4"}
+  CLsat2: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat2.cons.fa, mono: 145, colour: "#ff7f0e"}
+  CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#2ca02c"}
+  CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#d62728"}
+
+family_assignment: ../satpipe/stages/02_seed_expansion_scan/cluster_family.tsv
+manual_loci: ../ref/darevskia/manual_loci.bed
+
+expansion: {jobs: 32}
+
+finalisation:
+  # only the 85.83 Mb unp scaffold JAWDKN010000003.1 exceeded TRF's practical limit in the published run
+  large_scaffold_bp: 80000000
+
+subfamily:
+  members:
+    CLsat1: [CLsat1.1, CLsat1.2, CLsat1.3, CLsat1.4, CLsat1.5]
+    CLsat2: [CLsat2]
+    CLsat3: [CLsat3.1, CLsat3.2]
+    CLsat4: [CLsat4]
+  consensuses: /home/toki/satpipe_darevskia/subx   # absent here; stage 18 writes an empty table until it is copied from DRAGEN
+
+tools:
+  bin_dir: /home/toki/miniforge3/envs/sinederella/bin
+
+viewer:
+  title: "CLsat loci in Darevskia genomes"
+  species_names:
+    arm: D. armeniaca
+    mix: D. mixta
+    nai: D. nairensis (GCA_034642065.1, strain 215)
+    unm: D. unisexualis haplotype m (unm)
+    unp: D. unisexualis haplotype p (unp)
+    val: D. valentini

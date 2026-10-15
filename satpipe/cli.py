@@ -63,6 +63,27 @@ def cmd_not_yet(a: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_run(a: argparse.Namespace) -> int:
+    from .run import StageError, run, stage_ids
+    if a.list_stages:
+        print("\n".join(stage_ids()))
+        return 0
+    rep = run_check(a.config, do_files=True, do_tools=not a.skip_tool_check)
+    if rep.failed:
+        print(rep.to_text(), file=sys.stderr)
+        print("satpipe run: refusing to start, fix the check failures above (or --skip-tool-check)", file=sys.stderr)
+        return 1
+    try:
+        manifest = run(rep.config, from_stage=a.from_stage, to_stage=a.to_stage, force=a.force,
+                       only=a.only.split(",") if a.only else None)
+    except StageError as e:
+        print(f"satpipe run: {e}", file=sys.stderr)
+        return 1
+    keys = ("centroids_n", "centroids_md5", "seed_counts", "master_loci", "segmented_loci", "catalogue_loci", "ortholog_pairs")
+    print("summary: " + "; ".join(f"{k}={manifest[k]}" for k in keys if k in manifest))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="satpipe", description="Reusable satellite-DNA locus pipeline.")
     p.add_argument("--version", action="version", version=f"satpipe {__version__}")
@@ -83,11 +104,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = sp.add_parser("stages", help="list stage contracts and their wiring status")
     s.set_defaults(func=cmd_stages)
 
-    r = sp.add_parser("run", help="run stages (not implemented yet)")
+    r = sp.add_parser("run", help="run the stages (resumes: stages whose DONE marker matches are skipped)")
     r.add_argument("config")
-    r.add_argument("--from", dest="from_stage")
-    r.add_argument("--to", dest="to_stage")
-    r.set_defaults(func=cmd_not_yet)
+    r.add_argument("--from", dest="from_stage", help="first stage to run (see --list-stages)")
+    r.add_argument("--to", dest="to_stage", help="last stage to run")
+    r.add_argument("--only", help="comma-separated stage ids to run")
+    r.add_argument("--force", action="store_true", help="re-run selected stages even if their DONE marker matches")
+    r.add_argument("--skip-tool-check", action="store_true")
+    r.add_argument("--list-stages", action="store_true")
+    r.set_defaults(func=cmd_run)
 
     v = sp.add_parser("viewer", help="assemble the viewer directory for a run (not implemented yet)")
     v.add_argument("run_dir")

@@ -95,7 +95,8 @@ def test_cli_exit_codes(project, capsys):
     assert '"failed": false' in out
     (d / "ref" / "cluster_family.tsv").write_text("x\tSatX\n")
     assert cli.main(["check", str(cfg), "--no-tools"]) == 1
-    assert cli.main(["run", str(cfg)]) == 2
+    assert cli.main(["run", "--list-stages", str(cfg)]) == 0
+    assert "02_trf" in capsys.readouterr().out
     assert cli.main(["stages"]) == 0
     assert cli.main(["config", "--schema-doc"]) == 0
     assert cli.main(["config", str(cfg)]) == 0

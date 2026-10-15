@@ -27,7 +27,7 @@ with open(sys.argv[2]) as f:
 # --- subfamily.json: locus -> {subfamily, pid, bits, second, delta, confident} ---
 subfam = {}
 with open(f"{W}/locus_subfamily.tsv") as f:
-    next(f)
+    next(f, None)
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 9: continue
@@ -50,7 +50,7 @@ print(f"subfamily.json: {len(subfam)} loci, {os.path.getsize(W+'/subfamily.json'
 # fields per terminus: cons_start, cons_end, covered, frac, partial, pct_id, strand, edge_gap
 term = {}
 with open(f"{W}/terminal_monomers.tsv") as f:
-    next(f)
+    next(f, None)
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 10: continue
