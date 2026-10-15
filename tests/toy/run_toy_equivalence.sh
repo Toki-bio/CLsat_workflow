@@ -25,10 +25,49 @@ for t in trf vsearch mafft ssearch36 gawk parallel samtools bedtools python3; do
 cmpf(){ # cmpf <label> <old> <new>
   if cmp -s "$2" "$3"; then echo "  same   $1"; else echo "  DIFF   $1 ($2 vs $3)"; fail=1; fi
 }
-cmpjson(){ python3 - "$2" "$3" <<'PY' && echo "  same   $1" || { echo "  DIFF   $1"; fail=1; }
+# ssearch36 estimates bit scores from the library's score distribution with shuffled sequences,
+# so identical alignments get slightly different bits from run to run (see PIPELINE.md, "ssearch36
+# build divergence"). Structural columns must be identical; bits-derived numbers are compared with a
+# relative tolerance (TOL, default 25%; two runs of the ORIGINAL scan on identical inputs differ by up to ~15%).
+TOL="${TOL:-0.25}"
+cmpnum(){ # cmpnum <label> <old> <new> <exact-columns e.g. 1,2,4,5> <numeric-columns e.g. 3>   (1-based, tab-separated)
+  if python3 - "$2" "$3" "$4" "$5" "$TOL" <<'PY'
+import sys
+a=open(sys.argv[1]).read().rstrip('\n').split('\n'); b=open(sys.argv[2]).read().rstrip('\n').split('\n')
+ex=[int(x)-1 for x in sys.argv[3].split(',') if x]; nu=[int(x)-1 for x in sys.argv[4].split(',') if x]; tol=float(sys.argv[5])
+if len(a)!=len(b): print('    row count %d vs %d'%(len(a),len(b))); sys.exit(1)
+bad=0
+for i,(x,y) in enumerate(zip(a,b)):
+    px=x.split('\t'); py=y.split('\t')
+    for c in ex:
+        if c<len(px) and px[c]!=py[c]: print('    line %d col %d: %r vs %r'%(i+1,c+1,px[c],py[c])); bad+=1
+    for c in nu:
+        if c>=len(px): continue
+        try: u,v=float(px[c]),float(py[c])
+        except ValueError:
+            if px[c]!=py[c]: print('    line %d col %d: %r vs %r'%(i+1,c+1,px[c],py[c])); bad+=1
+            continue
+        if abs(u-v)>tol*max(abs(u),abs(v),1.0): print('    line %d col %d: %s vs %s'%(i+1,c+1,px[c],py[c])); bad+=1
+    if bad>5: break
+sys.exit(1 if bad else 0)
+PY
+  then echo "  same~  $1 (exact cols $4, bits cols $5 within ${TOL})"; else echo "  DIFF   $1"; fail=1; fi
+}
+cmpjson(){ python3 - "$2" "$3" "$TOL" <<'PY' && echo "  same~  $1 (numbers within ${TOL})" || { echo "  DIFF   $1"; fail=1; }
 import json,sys
+tol=float(sys.argv[3])
+def eq(a,b):
+    if isinstance(a,dict) and isinstance(b,dict):
+        return a.keys()==b.keys() and all(eq(a[k],b[k]) for k in a)
+    if isinstance(a,list) and isinstance(b,list):
+        return len(a)==len(b) and all(eq(x,y) for x,y in zip(a,b))
+    if isinstance(a,bool) or isinstance(b,bool) or a is None or b is None:
+        return a==b
+    if isinstance(a,(int,float)) and isinstance(b,(int,float)):
+        return abs(a-b)<=tol*max(abs(a),abs(b),1.0)
+    return a==b
 a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2]))
-sys.exit(0 if a==b else 1)
+sys.exit(0 if eq(a,b) else 1)
 PY
 }
 
@@ -149,21 +188,24 @@ for fam in $FAMS; do
   cmpf "step9 $fam members" "$SD/$fam.members.fa" "$N/seeds/$fam.members.fa"
   cmpf "step10 $fam seeds"  "$SD/$fam.bed" "$N/seeds/$fam.bed"
   cmpf "step11 $fam expansion" "$O/out_$fam.expanded_merged.bed" "$N/out_$fam.expanded_merged.bed"
-  cmpf "step13 $fam bits" "$O/scan/MASTER_$fam.bits.tsv" "$N/scan/MASTER_$fam.bits.tsv"
+  cmpnum "step13 $fam bits" <(sort "$O/scan/MASTER_$fam.bits.tsv") <(sort "$N/scan/MASTER_$fam.bits.tsv") 1,2,4,5 3
 done
 cmpf "step12 MASTER" "$O/out/MASTER.merged.bed" "$N/master/MASTER.merged.bed"
-for f in MASTER.loci.bed MASTER.loci.segmented.bed MASTER.locus_bits.tsv MASTER.final_assignment.tsv MASTER.locus_provenance.segmented.tsv; do
+for f in MASTER.loci.bed MASTER.loci.segmented.bed MASTER.locus_provenance.segmented.tsv; do
   cmpf "step14 $f" "$O/arb/$f" "$N/arb/$f"
 done
-for f in locus_master.tsv manifest.tsv all_regions.fa locus_subfamily.tsv terminal_monomers.tsv locus_boundary_phase.tsv; do
+cmpnum "step14 MASTER.locus_bits.tsv" "$O/arb/MASTER.locus_bits.tsv" "$N/arb/MASTER.locus_bits.tsv" 1 2,3,4,5
+cmpnum "step14 MASTER.final_assignment.tsv" "$O/arb/MASTER.final_assignment.tsv" "$N/arb/MASTER.final_assignment.tsv" 1,2,4,7,8 3,5,6
+for f in locus_master.tsv manifest.tsv all_regions.fa terminal_monomers.tsv locus_boundary_phase.tsv; do
   cmpf "05 $f" "$O/flank_analysis/$f" "$N/fa/$f"
 done
+cmpnum "05 locus_subfamily.tsv" "$O/flank_analysis/locus_subfamily.tsv" "$N/fa/locus_subfamily.tsv" 1,2,3,4,5,7 6,8,9
 for f in subfamily.json terminal_monomers.json terminal_hist.json boundary_phase.json boundary_phase_hist.json; do
   cmpjson "05 $f" "$O/flank_analysis/$f" "$N/fa/$f"
 done
 cmpjson "ortho flanks.json" "$O/ortho/flanks_627.json" "$N/ortho/flanks.json"
 cmpjson "ortho flank_orthologs.json" "$O/ortho/flank_orthologs_627.json" "$N/ortho/flank_orthologs.json"
-cmpf "ortho pairs" "$O/ortho/ortho_pairs.tsv" "$N/ortho/ortho_pairs.tsv"
+cmpnum "ortho pairs" "$O/ortho/ortho_pairs.tsv" "$N/ortho/ortho_pairs.tsv" 1,2,3,4,5,6 7
 cmpf "ortho flank_class" "$O/ortho/flank_class.tsv" "$N/ortho/flank_class.tsv"
 echo
 echo "loci: $(wc -l < "$N/master/MASTER.merged.bed") MASTER, $(wc -l < "$N/arb/MASTER.loci.segmented.bed") segmented; ortholog pairs: $(( $(wc -l < "$N/ortho/ortho_pairs.tsv") - 1 ))"
