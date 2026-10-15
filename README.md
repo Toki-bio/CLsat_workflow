@@ -17,16 +17,16 @@ original directory names; `git log --follow` gives their history.
 `satpipe` is a working name. The final name and the licence are owner decisions
 (see [HANDOFF.md](HANDOFF.md), "open decisions").
 
-## Status (work-plan step 3 of 10, 2026-10-15)
+## Status (work-plan step 4 of 10, 2026-10-15)
 
 | part | state |
 |---|---|
-| stage scripts | moved with `git mv` from the top level into `satpipe/stages/`, contents unchanged ([PROVENANCE.md](PROVENANCE.md)); superseded code in `legacy/`; the scripts still carry `/staging/...` paths (step 4 strips them) |
+| stage scripts | in `satpipe/stages/`, parameterised: inputs from arguments and small tables (`genomes.tsv`, `families.tsv`, `members.tsv`), parameters from environment variables with the published values as defaults; no server path, species code, family name or monomer length in code ([PROVENANCE.md](PROVENANCE.md)); equivalence with the original scripts verified on a synthetic project (`tests/toy/`) |
 | `config.yaml` schema | done: `satpipe/schema.py`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
 | `satpipe check` | done: schema, cross-key checks, input files (genomes, TRF `.dat`, consensus length vs `mono`, curated cluster table, sub-subfamily consensuses, manual loci), external tools with versions |
 | `satpipe run`, `satpipe viewer` | not implemented (steps 5-8); they exit 2 with a message |
 | Darevskia config | `configs/darevskia_clsat.yaml`; schema-valid; **file paths not yet verified on the server** (see the comment block at its top) |
-| tests | `pytest`: 19 tests on a synthetic project, no external tools needed |
+| tests | `pytest`: 19 tests on a synthetic project, no external tools needed; `tests/toy/run_toy_equivalence.sh`: original-vs-parameterised scripts end to end on synthetic genomes (needs the tools) |
 
 ## Install
 

@@ -63,10 +63,17 @@ if a.mode == 'assignment':
     if len(A) != len(B):
         problems.append('row count %d vs %d' % (len(A), len(B)))
     for i, (x, y) in enumerate(zip(A, B), 1):
-        for c in (0, 1, 3, 7):
+        for c in (0, 1, 7):
             if x[c] != y[c]:
                 problems.append('line %d col %d: %r vs %r' % (i, c + 1, x[c], y[c]))
         b1, b2 = num(x[2]), num(y[2]); o1, o2 = num(x[4]), num(y[4]); d1, d2 = num(x[5]), num(y[5])
+        if x[3] != y[3]:
+            # a different runner-up family is noise only when the two runner-up scores are within noise
+            if near(o1, o2):
+                noise_flips += 1
+                print('    noise tie line %d: best_other %s (%s) vs %s (%s)' % (i, x[3], x[4], y[3], y[4]))
+            else:
+                problems.append('line %d best_other: %r (%s) vs %r (%s)' % (i, x[3], x[4], y[3], y[4]))
         if not near(b1, b2) or not near(o1, o2):
             problems.append('line %d bits: %s/%s vs %s/%s' % (i, x[2], x[4], y[2], y[4]))
         band = TOL * ((abs(b1) if b1 else 0) + (abs(o1) if o1 else 0))

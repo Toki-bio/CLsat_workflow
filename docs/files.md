@@ -43,3 +43,15 @@ JSON. Conversions live in `make_bed_from_clsats_headers.sh:25`, `clisat_expand_t
 | finalisation | `chunk_coords.tsv`, `chunks/chunk_N.{fa,dat}` | | 1-based | 2 Mb chunks, 50 kb overlap, one scaffold |
 | finalisation | `refined_*.bed`, `.report.tsv` | *to document* | 0-based | nucleotide-level edge refinement |
 | viewer | `scaffold_lengths.tsv`, `<family>.cons.fa`, `MASTER_*.bits.tsv.gz`, `MASTER_flank.bits.tsv.gz` | | | inputs the viewer reads; gzip -9 -n |
+
+## Input tables the stage scripts read (since step 4)
+
+| table | columns (tab-separated, `#` lines ignored) | produced by |
+|---|---|---|
+| `genomes.tsv` | species code, genome FASTA (must be indexed with `samtools faidx`) | driver, from `genomes` in the config |
+| `families.tsv` | family, MONO (bp), consensus FASTA (one monomer) | driver, from `families` |
+| `members.tsv` | family, sub-subfamily name (one row per sub-subfamily; the `<name>.fa` DOUBLED consensus lives in `subfamily.consensuses`) | driver, from `subfamily.members` |
+| `expansions.tsv` | family, `out_<family>.expanded_merged.bed` | driver, after stage 11 |
+| `arbitration_inputs.tsv` | family, MONO, `MASTER_<family>.bits.tsv`, `<family>.bed` (seeds) | driver, after stage 13; row order = column order of `MASTER.locus_bits.tsv` |
+| `cluster_family.tsv` | cluster number (Step 8), family[, note] | curated by hand (`family_assignment` in the config) |
+| `candidates.tsv` | id, species, scaffold, start1, end1 | from `singleton_screen.sh` output, for `candidate_scan.py` |

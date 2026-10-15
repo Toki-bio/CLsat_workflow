@@ -38,6 +38,21 @@ Owner decisions already taken, do not reopen: `SEG_SHORT=drop` is the published 
   verified** (server unreachable from that session) — run `satpipe check configs/darevskia_clsat.yaml` on the
   server before step 4. `satpipe run` / `viewer` are stubs.
 
+- 2026-10-15 — **step 4 done** (branch `step4`, merged to `main`): every stage script takes its inputs from
+  arguments, environment variables (published values as defaults) or three small tables —
+  `families.tsv` (family, mono, consensus), `genomes.tsv` (code, FASTA), `members.tsv` (family, sub-subfamily);
+  `arbitration_patched.sh` takes `arbitration_inputs.tsv` (family, mono, bits, seed) and handles any number of
+  families with window = 2 × MONO. No `/staging`, species code, family name, MONO or window width remains in
+  code (only in comments). One-off run records of the published catalogue (85 Mb bisection cascade, pass3
+  variants, v6 CLsat1 re-expansion, bits combiners) are in `legacy/published_run/`.
+  **Verified** on therioserver with `tests/toy/run_toy_equivalence.sh` (synthetic 2-genome project, stages 03–14,
+  orthology, sub-subfamily, terminal, phase): every structural output byte-identical between the original
+  scripts (`4d70b56`, paths patched by sed) and the parameterised ones. The only differences are ssearch36 bit
+  scores, which the ORIGINAL scripts also change between two runs on identical inputs (shuffled-library
+  statistics, up to ~15 % on the toy), and the deltas/flags that threshold them; the harness compares those
+  within a noise band (`compare_noise.py`). Not covered by the toy: stage 02 (TRF on genomes), finalisation
+  scripts, stage 07 scripts (syntax-checked only).
+
 ## The pipeline as it is
 
 Stages run in this order; each row is the contract a refactor must keep. "Hand" marks a curated input that cannot be derived automatically and must become an explicit, validated file.

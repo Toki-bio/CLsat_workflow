@@ -21,6 +21,9 @@ Rules in short:
 - After `satpipe/schema.py` changes, regenerate `docs/config.md` with `satpipe config --schema-doc`.
 - Record any change that alters published numbers in `CLsat_workflow/PIPELINE.md` as well.
 
-Next step is work-plan step 4 (parameterise the scripts: strip `/staging` constants, the
-`declare -A` tables and literal MONO/window widths; feed them from the driver). Check for that
-step: `grep -rn '/staging\|JAWWN\|146\b' satpipe/stages` returns nothing that is not a comment.
+Steps 3 and 4 are done (see HANDOFF.md progress log). Next is work-plan step 5: the driver
+(`satpipe run`, plain Python stage runner, owner's decision) wiring stages 03-14 with DONE
+markers and a manifest; check: the Darevskia run from the `.dat` files reproduces the
+`cross_species_centroids.fa` md5 and 540 MASTER loci. The toy equivalence harness
+(`tests/toy/run_toy_equivalence.sh`, needs the tools; therioserver env `sinederella` has them)
+is the regression test for any further script change.

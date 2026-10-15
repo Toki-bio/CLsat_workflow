@@ -24,7 +24,33 @@ kept for the record:
 
 - `legacy/superseded_blastn/` (earlier blastn flank-orthology method, 45 pairs instead of 53, plus
   the consumers the audit moved there);
-- `legacy/expand_clsats.sh` (serial predecessor of the expansion script, with the `--min-aln-frac` bug).
+- `legacy/expand_clsats.sh` (serial predecessor of the expansion script, with the `--min-aln-frac` bug);
+- `legacy/published_run/` (step 4, 2026-10-15): the one-off drivers of the published catalogue that
+  only make sense with the Darevskia files and the paths of that run — the 85 Mb chunk-44 bisection
+  cascade (`split_chunk44.sh`, `split_sub44_4.sh`, `bisect_*.sh`, `merge_chunk44_final.py`,
+  `proper_verify.py`), the candidate rescans of the recovered locus (`run_new_candidates.sh`,
+  `scan_newlocus_other_fams.sh`, `append_newlocus_bits.py`), the pass-3 variants
+  (`run_pass3_changed.sh`, `run_pass3_delta.sh`, `combine_bits_v2.py`, `run_arbitration_540.sh`) and
+  the CLsat1 re-expansion records (`_v6_full_clsat1.sh`, `run_clsat1_full_rescan.sh`). The methods
+  they drove (`run_chunked.sh`, `finish_merge85.sh`, `classify_candidates.py`, `run_pass3.sh`,
+  `arbitration_540.sh`, `refine_edges.py`) stay in `satpipe/stages/06_catalogue_finalize/`, parameterised.
+
+## Parameterisation (step 4, 2026-10-15)
+
+Every script under `satpipe/stages/` now takes paths from arguments and parameters from
+environment variables whose defaults are the published values. The usage header of each script
+documents its arguments. Three tables replace the former hard-coded `declare -A` maps:
+
+| table | columns | used by |
+|---|---|---|
+| `genomes.tsv` | species code, genome FASTA (indexed) | expansion, rescan, orthology, sub-subfamily, terminal, finalisation, post |
+| `families.tsv` | family, MONO, consensus FASTA | build_locus_master, terminal_monomers, boundary_phase, build_subfam_term_json, rebuild_ortho_segmented, clean_ortho_pairs, run_pass3, refine_edges, classify_candidates, candidate_* |
+| `members.tsv` | family, sub-subfamily | assign_subfamily, run_assign, candidate_subsubfamily |
+| `arbitration_inputs.tsv` | family, MONO, rescan bits TSV, seed BED | arbitration_patched (and its wrapper arbitration_540) |
+| `expansions.tsv` | family, expanded_merged BED | build_master, clean_ortho_pairs |
+
+Equivalence with the original scripts was tested on a synthetic project (`tests/toy/`), see
+HANDOFF.md progress log.
 
 ## Reference data
 
