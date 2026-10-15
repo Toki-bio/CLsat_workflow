@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
+# Re-merge the per-chunk TRF outputs of run_chunked.sh into scaffold coordinates after any
+# chunk .dat has been replaced by hand (the published run rebuilt chunk_44 from a bisection
+# cascade; see legacy/published_run/85mb_recovery/).
+#
+# Usage: finish_merge85.sh <out_dir>     (the run_chunked.sh output directory)
 set -euo pipefail
-cd /staging/tmp/clsat_v6/scan85
+[[ $# -eq 1 ]] || { echo "Usage: $0 <out_dir>" >&2; exit 1; }
+cd "$1"
+[[ -s chunk_coords.tsv ]] || { echo "chunk_coords.tsv missing in $1" >&2; exit 1; }
 
 echo "=== translate chunk-local coordinates back to scaffold coordinates ==="
 python3 - << 'PYEOF'
@@ -30,5 +37,5 @@ sort -k1,1n -k4,4n scaf.trf.merged.dat | \
   awk '{key=$4"_"$3; if(key!=prevkey || $1-prevend>100){print; prevkey=key} prevend=$2}' \
   > scaf.trf.dedup.dat
 wc -l scaf.trf.merged.dat scaf.trf.dedup.dat
-echo TRF_CHUNKED_DONE > trf85.done
+echo TRF_CHUNKED_DONE > trf_chunked.done
 echo FINISHED

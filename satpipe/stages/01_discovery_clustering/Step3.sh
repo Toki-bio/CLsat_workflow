@@ -1,16 +1,28 @@
 #!/bin/bash
 set -euo pipefail
+# Step 3 - extract candidate tandem-repeat motifs from TRF .dat files.
+#
+# Usage: Step3.sh [dat_dir] [out_dir]
+#   dat_dir   directory searched (recursively) for *.dat files; the basename of each .dat file
+#             is the species code written into every FASTA header            [default: .]
+#   out_dir   output directory, one <code>.fa per .dat                          [default: motifs_output]
+# Environment (defaults = published Darevskia run):
+#   PERIOD_MIN  minimum TRF period accepted                                    [80]
+#   PERIOD_MAX  maximum TRF period accepted                                    [300]
+#   MIN_COPIES  minimum TRF copy number accepted                               [10]
+#
+# Header written per motif: >code|SCAFFOLD:START-END|len=PERIOD|copies=COPIES|locuslen=N
+# (START-END are TRF's 1-based inclusive coordinates.)
 
-# Filters
-MIN_LEN=80
-MAX_LEN=300
-MIN_COPIES=10
-
-OUTPUT_DIR="motifs_output"
+IN_DIR="${1:-.}"
+OUTPUT_DIR="${2:-motifs_output}"
+MIN_LEN="${PERIOD_MIN:-80}"
+MAX_LEN="${PERIOD_MAX:-300}"
+MIN_COPIES="${MIN_COPIES:-10}"
 mkdir -p "$OUTPUT_DIR"
 
 # -P => never follow symlinks; include regular files and symlinks
-find -P . \( -type f -o -type l \) -name '*.dat' -print0 |
+find -P "$IN_DIR" \( -type f -o -type l \) -name '*.dat' -print0 |
 while IFS= read -r -d '' dat_file; do
   # Always use symlink/file's own name for output file and FASTA headers
   output_base=$(basename -- "$dat_file" .dat)

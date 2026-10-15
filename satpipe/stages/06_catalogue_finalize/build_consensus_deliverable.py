@@ -1,41 +1,84 @@
 # -*- coding: utf-8 -*-
-"""Regenerate the reference-free per-assembly CLsat1 consensus comparison and SAVE it as
-real deliverable files (this was previously only ever printed to a terminal and never
-saved) -- same deterministic method (seed=5, 600 monomers/assembly) already used for the
-manuscript's numbers, so results should reproduce exactly."""
-import subprocess, random, collections, statistics
+"""Reference-free per-assembly consensus comparison for one family, saved as deliverable files
+(the manuscript's numbers came from this method: seed=5, 600 monomers per assembly, 300
+bootstrap resamples; results reproduce exactly with the same seed).
 
-BIN = '/staging/conda/envs/bioinfo/bin'
-SD = ('/staging/Sergei/Lacertidae/Darevskia/Satellites/motifs_output/clean/'
-      'cross_clusters/selected/subclusters/seeds')
-OUT = '/staging/tmp/clsat_v6/consensus_deliverable'
+Usage: build_consensus_deliverable.py <genomes.tsv> <seeds.bed> <consensus.fa> <out_dir>
+                                      [--pairs a:b,c:d,...] [--n-monomers 600] [--n-boot 300] [--seed 5]
+  genomes.tsv   species_code  genome.fa (indexed); the species order of the tables
+  seeds.bed     the family's seed BED (col4 = species|...)
+  consensus.fa  the family consensus (one record; its length is the monomer length)
+  --pairs       species pairs for the bootstrap CI table; default: every pair. The summary
+                compares the FIRST TWO pairs when at least two are given (the published run
+                used unp:nai vs unp:val).
+Tools: samtools on PATH.
+Outputs: <family>_per_assembly_consensus.fa, <family>_consensus_pairwise_identity.tsv,
+         <family>_consensus_bootstrap_CI.tsv, <family>_consensus_summary.txt
+"""
+import argparse
+import collections
+import itertools
 import os
-os.makedirs(OUT, exist_ok=True)
+import random
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
 
-M = 146
-NMON = 600
-NBOOT = 300
+ap = argparse.ArgumentParser()
+ap.add_argument('genomes')
+ap.add_argument('seeds')
+ap.add_argument('consensus')
+ap.add_argument('out')
+ap.add_argument('--pairs', default='')
+ap.add_argument('--n-monomers', type=int, default=600)
+ap.add_argument('--n-boot', type=int, default=300)
+ap.add_argument('--seed', type=int, default=5)
+a = ap.parse_args()
+
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
+OUT = a.out
+os.makedirs(OUT, exist_ok=True)
+NMON = a.n_monomers
+NBOOT = a.n_boot
 
 GEN = {}
-for line in open(SD + '/genomes.tsv'):
+SPS = []
+for line in open(a.genomes):
+    if not line.strip() or line.startswith('#'):
+        continue
     p = line.rstrip('\n').split('\t')
     if len(p) >= 2:
         GEN[p[0]] = p[1]
-C1 = ''.join(l.strip() for l in open(SD + '/CLsat1.cons.fa') if not l.startswith('>')).upper()
+        SPS.append(p[0])
+FAM = None
+C1 = ''
+for line in open(a.consensus):
+    if line.startswith('>'):
+        FAM = line[1:].split()[0]
+    else:
+        C1 += line.strip().upper()
+FAM = FAM or 'family'
+M = len(C1)
 D1 = C1 + C1
 TR = str.maketrans('ACGTN', 'TGCAN')
 rc = lambda s: s.translate(TR)[::-1]
-def ident(a, b):
-    n = min(len(a), len(b))
-    return sum(1 for i in range(n) if a[i] == b[i]) / n if n else 0.0
+
+
+def ident(x, y):
+    n = min(len(x), len(y))
+    return sum(1 for i in range(n) if x[i] == y[i]) / n if n else 0.0
+
 
 seeds = collections.defaultdict(list)
-for line in open(SD + '/CLsat1.bed'):
+for line in open(a.seeds):
     p = line.rstrip('\n').split('\t')
     if len(p) >= 4:
         sp = p[3].split('|')[0]
         if sp in GEN:
             seeds[sp].append((p[0], int(p[1]), int(p[2])))
+
 
 def monomers(sp, n_target, seed):
     SL = {}
@@ -43,22 +86,25 @@ def monomers(sp, n_target, seed):
         q = line.split('\t')
         SL[q[0]] = int(q[1])
     R = [r for r in seeds[sp] if r[2] - r[1] > 5 * M]
+    if not R:
+        return []
     random.seed(seed)
     regs = []
     for _ in range(n_target * 4):
-        scf, a, b = random.choice(R)
-        if b > SL.get(scf, 0):
+        scf, x, y = random.choice(R)
+        if y > SL.get(scf, 0):
             continue
-        p = random.randint(a, b - 3 * M)
+        p = random.randint(x, y - 3 * M)
         regs.append((scf, p + 1, p + 3 * M))
         if len(regs) >= n_target * 2:
             break
-    rf = '/tmp/bs.txt'
-    with open(rf, 'w') as f:
+    with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as f:
         for scf, s, e in regs:
             f.write('%s:%d-%d\n' % (scf, s, e))
-    out = subprocess.run([BIN + '/samtools', 'faidx', GEN[sp], '--region-file', rf],
+        rf = f.name
+    out = subprocess.run([SAM, 'faidx', GEN[sp], '--region-file', rf],
                          capture_output=True, text=True).stdout
+    os.unlink(rf)
     segs = []
     cur = None
     buf = []
@@ -91,55 +137,67 @@ def monomers(sp, n_target, seed):
             break
     return mons
 
+
 def consensus(ms):
     return ''.join((collections.Counter(m[i] for m in ms if m[i] in 'ACGT').most_common(1)
                     or [('N',)])[0][0] for i in range(M))
 
-SPS = ['arm', 'val', 'mix', 'unm', 'nai', 'unp']
-POOL = {sp: monomers(sp, NMON, 5) for sp in SPS}
+
+POOL = {sp: monomers(sp, NMON, a.seed) for sp in SPS}
+SPS = [sp for sp in SPS if POOL[sp]]
+if not SPS:
+    sys.exit('no monomers sampled for any species (seed BED empty or arrays shorter than 5 monomers)')
 CONS = {sp: consensus(POOL[sp]) for sp in SPS}
 
 # --- deliverable 1: per-assembly consensus FASTA ---
-with open(f'{OUT}/CLsat1_per_assembly_consensus.fa', 'w') as f:
+with open(f'{OUT}/{FAM}_per_assembly_consensus.fa', 'w') as f:
     for sp in SPS:
-        f.write(f'>{sp}_CLsat1_consensus n_monomers={len(POOL[sp])}\n{CONS[sp]}\n')
+        f.write(f'>{sp}_{FAM}_consensus n_monomers={len(POOL[sp])}\n{CONS[sp]}\n')
 
 # --- deliverable 2: full pairwise identity matrix ---
-with open(f'{OUT}/CLsat1_consensus_pairwise_identity.tsv', 'w') as f:
+with open(f'{OUT}/{FAM}_consensus_pairwise_identity.tsv', 'w') as f:
     f.write('assembly\t' + '\t'.join(SPS) + '\n')
-    for a in SPS:
-        row = [f'{100*ident(CONS[a], CONS[b]):.1f}' if a != b else '-' for b in SPS]
-        f.write(a + '\t' + '\t'.join(row) + '\n')
+    for x in SPS:
+        row = [f'{100*ident(CONS[x], CONS[y]):.1f}' if x != y else '-' for y in SPS]
+        f.write(x + '\t' + '\t'.join(row) + '\n')
 
-# --- deliverable 3: bootstrap CI table (regenerated, same method/seed as manuscript numbers) ---
-pairs = {('unp', 'nai'): [], ('unp', 'val'): [], ('unp', 'unm'): [], ('unp', 'arm'): [],
-         ('unm', 'nai'): [], ('unm', 'val'): []}
-random.seed(5)
+# --- deliverable 3: bootstrap CI table ---
+if a.pairs:
+    PAIRS = [tuple(kp.split(':')) for kp in a.pairs.split(',')]
+    for x, y in PAIRS:
+        if x not in CONS or y not in CONS:
+            sys.exit('pair %s:%s names an assembly without sampled monomers' % (x, y))
+else:
+    PAIRS = list(itertools.combinations(SPS, 2))
+pairs = {pq: [] for pq in PAIRS}
+random.seed(a.seed)
 for _ in range(NBOOT):
     cons = {}
     for sp in SPS:
         ms = [random.choice(POOL[sp]) for _ in range(len(POOL[sp]))]
         cons[sp] = consensus(ms)
-    for (a, b) in pairs:
-        pairs[(a, b)].append(100 * ident(cons[a], cons[b]))
+    for (x, y) in pairs:
+        pairs[(x, y)].append(100 * ident(cons[x], cons[y]))
 
-with open(f'{OUT}/CLsat1_consensus_bootstrap_CI.tsv', 'w') as f:
+with open(f'{OUT}/{FAM}_consensus_bootstrap_CI.tsv', 'w') as f:
     f.write('pair\tmedian_pct_identity\tCI95_low\tCI95_high\n')
-    for (a, b), v in pairs.items():
+    for (x, y), v in pairs.items():
         v.sort()
-        f.write(f'{a}-{b}\t{statistics.median(v):.1f}\t{v[int(0.025*NBOOT)]:.1f}\t{v[int(0.975*NBOOT)]:.1f}\n')
+        f.write(f'{x}-{y}\t{statistics.median(v):.1f}\t{v[int(0.025*NBOOT)]:.1f}\t{v[int(0.975*NBOOT)]:.1f}\n')
 
-d = [x - y for x, y in zip(pairs[('unp', 'nai')], pairs[('unp', 'val')])]
-d.sort()
-frac = 100.0 * sum(1 for x in d if x > 0) / len(d)
-with open(f'{OUT}/CLsat1_consensus_summary.txt', 'w') as f:
-    f.write('Reference-free per-assembly CLsat1 consensus comparison\n')
-    f.write(f'Method: {NMON} bootstrap-resampled monomers per assembly, seed=5, {NBOOT} resamples\n\n')
-    f.write(f'unp consensus vs nai: {ident(CONS["unp"], CONS["nai"])*100:.1f}%\n')
-    f.write(f'unp consensus vs val: {ident(CONS["unp"], CONS["val"])*100:.1f}%\n')
-    f.write(f'unp-nai minus unp-val: median {statistics.median(d):+.1f} points, '
-            f'95% CI {d[int(0.025*NBOOT)]:+.1f} to {d[int(0.975*NBOOT)]:+.1f}\n')
-    f.write(f'fraction of resamples where unp is closer to nai than to val: {frac:.1f}%\n')
+with open(f'{OUT}/{FAM}_consensus_summary.txt', 'w') as f:
+    f.write(f'Reference-free per-assembly {FAM} consensus comparison\n')
+    f.write(f'Method: {NMON} bootstrap-resampled monomers per assembly, seed={a.seed}, {NBOOT} resamples\n\n')
+    if len(PAIRS) >= 2:
+        (p1, p2) = PAIRS[0], PAIRS[1]
+        d = [x - y for x, y in zip(pairs[p1], pairs[p2])]
+        d.sort()
+        frac = 100.0 * sum(1 for x in d if x > 0) / len(d)
+        f.write(f'{p1[0]} consensus vs {p1[1]}: {ident(CONS[p1[0]], CONS[p1[1]])*100:.1f}%\n')
+        f.write(f'{p2[0]} consensus vs {p2[1]}: {ident(CONS[p2[0]], CONS[p2[1]])*100:.1f}%\n')
+        f.write(f'{p1[0]}-{p1[1]} minus {p2[0]}-{p2[1]}: median {statistics.median(d):+.1f} points, '
+                f'95% CI {d[int(0.025*NBOOT)]:+.1f} to {d[int(0.975*NBOOT)]:+.1f}\n')
+        f.write(f'fraction of resamples where {p1[0]}-{p1[1]} identity exceeds {p2[0]}-{p2[1]}: {frac:.1f}%\n')
 
 print('wrote deliverables to', OUT)
-print(open(f'{OUT}/CLsat1_consensus_summary.txt').read())
+print(open(f'{OUT}/{FAM}_consensus_summary.txt').read())

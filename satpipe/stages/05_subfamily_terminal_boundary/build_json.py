@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Build viewer JSON files from flank analysis outputs."""
-import json, os, re
+"""Build viewer JSON files (flanks.json, boundary_phase.json, boundary_phase_hist.json) from the
+flank-analysis work directory.
 
-WORK = "/staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/CLsat_full_clusters_6genome/flank_analysis"
+Usage: build_json.py <work_dir>
+  work_dir holds all_regions.fa, locus_master.tsv, manifest.tsv, locus_boundary_phase.tsv
+Note: this builder's flanks.json carries no flank `class`; the viewer's flanks.json comes from
+rebuild_ortho_segmented.py (see PIPELINE.md). Kept for the boundary-phase products.
+"""
+import json
+import os
+import sys
+
+if len(sys.argv) != 2:
+    sys.exit("Usage: build_json.py <work_dir>")
+WORK = sys.argv[1]
 
 # --- Load region FASTA into dict: header -> seq ---
 seqs = {}
@@ -28,7 +39,7 @@ with open(f"{WORK}/locus_master.tsv") as f:
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 7: continue
-        lid, scf, s0, e, sp, subt, mono = p
+        lid, scf, s0, e, sp, subt, mono = p[:7]
         locus[lid] = dict(scf=scf, start=int(s0), end=int(e), sp=sp,
                           subtype=subt, mono=int(mono),
                           length=int(e)-int(s0))
@@ -49,6 +60,8 @@ with open(f"{WORK}/manifest.tsv") as f:
         if kind not in ("LF", "RF"): continue
         if rs == "0":
             continue  # missing flank (off scaffold edge)
+        if lid not in flanks:
+            continue
         header = f"{sp}|{scf}:{rs}-{re_}"
         seq = seqs.get(header, "")
         flanks[lid][kind] = {
@@ -87,6 +100,8 @@ print(f"wrote boundary_phase.json ({os.path.getsize(WORK+'/boundary_phase.json')
 # --- aggregate stats: start/end consensus coord histograms per subtype ---
 agg = {}
 for lid, kinds in bphase.items():
+    if lid not in locus:
+        continue
     subt = locus[lid]["subtype"]
     agg.setdefault(subt, {"start": [0]* (locus[lid]["mono"]+1),
                           "end": [0]*(locus[lid]["mono"]+1),

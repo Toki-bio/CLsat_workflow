@@ -1,24 +1,53 @@
 #!/usr/bin/env python3
-"""Sub-subfamily assignment for the 7 candidate loci, following Methods 3.6:
+"""Sub-subfamily assignment for the candidate loci, following Methods 3.6:
 a two-monomer window from the array boundary is aligned (ssearch36 -m 8C) against the
 doubled sub-subfamily consensuses of the assigned family only; highest bitscore wins,
-and the margin to the second best is recorded."""
+and the margin to the second best is recorded.
+
+Usage: candidate_subsubfamily.py <out_dir> <genomes.tsv> <families.tsv> <subfamily_consensuses> <members.tsv>
+                                 [--confident-delta 10]
+  out_dir                holds candidates_summary.json from candidate_scan.py (updated in place)
+  genomes.tsv            species_code  genome.fa
+  families.tsv           family  mono  consensus.fa
+  subfamily_consensuses  one multi-record FASTA, or a directory of <name>.fa files (subx/);
+                         sequences are doubled here, so give SINGLE monomers in the FASTA case
+                         and note that the Darevskia subx/ files are already doubled (then pass
+                         --already-doubled)
+  members.tsv            family<TAB>sub-subfamily
+Tools: ssearch36, samtools on PATH.
+"""
+import argparse
 import json
 import os
+import shutil
 import subprocess
+import sys
 
-BASE = '/staging/Sergei/Lacertidae/Darevskia'
-OUT = BASE + '/Satellites/motifs_output/clean/candidates'
-SS = '/staging/conda/envs/bioinfo/bin/ssearch36'
-SUB = '/tmp/subsubfamily_consensuses.fasta'
+ap = argparse.ArgumentParser()
+ap.add_argument('out')
+ap.add_argument('genomes')
+ap.add_argument('families')
+ap.add_argument('subcons')
+ap.add_argument('members')
+ap.add_argument('--confident-delta', type=float, default=10.0)
+ap.add_argument('--already-doubled', action='store_true')
+a = ap.parse_args()
 
-GEN = {
-    'unp': BASE + '/unp/GCA_032766555.1_D.uni.pHiFi.1.0_genomic.fna',
-    'val': BASE + '/val/GCA_034642135.1_Dar_val_2.0_genomic.fna',
-    'nai': BASE + '/nai/GCA_034642065.1_Dar_nair_1.0_genomic.fna',
-    'unm': BASE + '/unm/GCA_032766585.1_D.uni.mHiFi.1.0_genomic.fna',
-    'arm': BASE + '/arm/GCA_034641395.1_Dar_arm_1.0_genomic.fna',
-}
+SS = shutil.which('ssearch36') or sys.exit('ssearch36 not on PATH')
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
+OUT = a.out
+
+
+def read_tsv(path, min_cols):
+    rows = []
+    for line in open(path):
+        if not line.strip() or line.startswith('#'):
+            continue
+        p = line.rstrip('\n').split('\t')
+        if len(p) < min_cols:
+            sys.exit('%s: need %d columns, got %r' % (path, min_cols, line.strip()))
+        rows.append(p)
+    return rows
 
 
 def read_fa(p):
@@ -33,13 +62,27 @@ def read_fa(p):
     return {k: ''.join(v).upper() for k, v in s.items()}
 
 
-ss = read_fa(SUB)
-print('sub-subfamily consensuses: %s' % {k: len(v) for k, v in ss.items()})
+GEN = {p[0]: p[1] for p in read_tsv(a.genomes, 2)}
+MONO = {p[0]: int(p[1]) for p in read_tsv(a.families, 3)}
+FAMOF = {p[1]: p[0] for p in read_tsv(a.members, 2)}
 
-# doubled subjects grouped by parent family
-FAMOF = {}
+ss = {}
+if os.path.isdir(a.subcons):
+    for fn in sorted(os.listdir(a.subcons)):
+        if fn.endswith(('.fa', '.fas', '.fasta')):
+            name = fn.rsplit('.', 1)[0]
+            seq = ''.join(read_fa(os.path.join(a.subcons, fn)).values())
+            ss[name] = seq[:len(seq) // 2] if a.already_doubled else seq
+else:
+    ss = read_fa(a.subcons)
+    if a.already_doubled:
+        ss = {k: v[:len(v) // 2] for k, v in ss.items()}
+print('sub-subfamily consensuses: %s' % {k: len(v) for k, v in ss.items()})
 for name in ss:
-    FAMOF[name] = 'CLsat' + name.replace('CLsat', '').split('.')[0]
+    if name not in FAMOF:
+        print('  WARNING: %s has no family in %s; ignored' % (name, a.members), file=sys.stderr)
+
+# doubled subjects
 for name, seq in ss.items():
     with open('%s/ss_%s.fa' % (OUT, name), 'w') as f:
         f.write('>%s\n%s\n' % (name, seq + seq))
@@ -48,18 +91,18 @@ data = json.load(open('%s/candidates_summary.json' % OUT))
 summary = data['summary']
 
 for cid, s in sorted(summary.items()):
-    sp, scaf, a, b = s['sp'], s['scf'], s['start'] + 1, s['end']
+    sp, scaf, x, y = s['sp'], s['scf'], s['start'] + 1, s['end']
     fam = s['call']
-    mono = 146 if fam in ('CLsat1', 'CLsat3') else (145 if fam == 'CLsat2' else 116)
-    win = min(2 * mono, b - a + 1)
-    r = subprocess.run(['samtools', 'faidx', GEN[sp], '%s:%d-%d' % (scaf, a, a + win - 1)],
+    mono = MONO[fam]
+    win = min(2 * mono, y - x + 1)
+    r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, x + win - 1)],
                        capture_output=True, text=True)
     q = ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
     with open('%s/_ssq.fa' % OUT, 'w') as f:
         f.write('>q\n%s\n' % q)
     scores = {}
     for name in ss:
-        if FAMOF[name] != fam:
+        if FAMOF.get(name) != fam:
             continue
         o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1',
                             '%s/_ssq.fa' % OUT, '%s/ss_%s.fa' % (OUT, name)],
@@ -89,7 +132,7 @@ for cid, s in sorted(summary.items()):
     s['ss_pid'] = tp
     s['ss_second'] = second
     s['ss_delta'] = delta
-    s['ss_confident'] = bool(delta >= 10 or second is None)
+    s['ss_confident'] = bool(delta >= a.confident_delta or second is None)
     print('  %-3s %-7s -> %-9s %6.1f bits  pid=%.1f  second=%-9s delta=%5.1f  confident=%s'
           % (cid, fam, top, tb, tp, second, delta, s['ss_confident']))
 

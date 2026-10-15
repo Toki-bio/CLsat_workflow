@@ -2,50 +2,69 @@
 set -euo pipefail
 export LC_ALL=C   # byte-order sort: locus numbering must not depend on the locale
 
-# arbitration_patched.sh -- CLsat locus family assignment pipeline
+# arbitration_patched.sh -- Step 14: locus segmentation and family assignment.
+#
+# Usage: arbitration_patched.sh <families.tsv> <MASTER.merged.bed> <out_dir>
+#   families.tsv       one row per family, tab-separated, '#' lines ignored:
+#                        family  MONO  <family>.bits.tsv (stage-13 rescan of MASTER)  <family> seed BED (stage 10)
+#                      The row order fixes the column order of MASTER.locus_bits.tsv.
+#   MASTER.merged.bed  stage-12 output (chrom start end tag [provenance]); locus L<n> = row n
+#   out_dir            every output goes here (created)
+# Environment (defaults = published Darevskia run):
+#   DELTA          UNIQUE_SEED contradiction threshold                       [20]
+#   DELTA_AMBIG    CONFLICT / sub-locus / NO_SEED ambiguity threshold          [15]
+#   SEG_BIN        D3b bin width, bp                                           [1000]
+#   SEG_MIN_RUN    bins a competing family must dominate to open a segment     [10]
+#   SEG_MIN_LOCUS  segments shorter than this are dropped or merged (SEG_SHORT) [2000]
+#   SEG_SHORT      drop (published) | merge                                    [drop]
+#
+# D3 converts each scan row (1-based window start `pos`) to a 0-based BED interval of width
+# 2 x MONO, i.e. the scan window of stage 13 (292/290/292/232 bp for the Darevskia families).
 #
 # Patches vs original:
-#  D3 : pos-1 for 0-based BED start; CLsat1 window = 292 bp (MONO=146)
-#  D3b: sorted() tiebreak in Python segmentation (deterministic)
+#  D3 : pos-1 for 0-based BED start; window = 2 x MONO
+#  D3b: sorted() tiebreak in Python segmentation (deterministic); bins on pos-1 like D3
 #  D6 : three explicit branches: UNIQUE_SEED / SEED_CONFLICT+sub / NO_SEED
 #       sub-loci and SEED_CONFLICT get delta scrutiny via DELTA_AMBIG
 #       NO_SEED uses bitscore winner without phantom 0-delta comparison
+#       branch 3 writes delta = seed - strongest other (same sign as branches 1-2)
 #
-# Output columns: locus_id family assigned_bits best_other best_other_bits
-#                 delta flag provenance(col8)
-
-BASE="/staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/CLsat_full_clusters_6genome"
-OUT="$BASE/out"
-
-BITS1="$OUT/MASTER_CLsat1.bits.tsv"
-BITS2="$OUT/MASTER_CLsat2.bits.tsv"
-BITS3="$OUT/MASTER_CLsat3.bits.tsv"
-BITS4="$OUT/MASTER_CLsat4.bits.tsv"
-
-SEED1="$BASE/CLsat1.bed"
-SEED2="$BASE/CLsat2.bed"
-SEED3="$BASE/CLsat3.bed"
-SEED4="$BASE/CLsat4.bed"
-
-if [[ -s "$OUT/MASTER.merged.bed" ]]; then
-  MASTER_BED="$OUT/MASTER.merged.bed"; HAS_PROV=1
-else
-  MASTER_BED="$OUT/MASTER.merged.bed"; HAS_PROV=0
-fi
-
-DELTA=20        # UNIQUE_SEED contradiction threshold
-DELTA_AMBIG=15  # CONFLICT/sub-locus/NO_SEED ambiguity threshold
-SEG_BIN=1000; SEG_MIN_RUN=10; SEG_MIN_LOCUS=2000
+# Output columns (MASTER.final_assignment.tsv): locus_id family assigned_bits best_other
+#                 best_other_bits delta flag provenance(col8)
 
 die(){ echo "FATAL: $*" >&2; exit 1; }
 check_file(){ [[ -s "$1" ]] || die "Missing: $1"; }
 log(){ echo "[$(date +"%F %T")] $*"; }
 
-log "Pre-flight (DELTA=${DELTA} DELTA_AMBIG=${DELTA_AMBIG} prov=${HAS_PROV})"
-for f in "$BITS1" "$BITS2" "$BITS3" "$BITS4" "$SEED1" "$SEED2" "$SEED3" "$SEED4" "$MASTER_BED"; do
-  check_file "$f"; done
+[[ $# -eq 3 ]] || die "Usage: $0 <families.tsv> <MASTER.merged.bed> <out_dir>"
+FAMTAB="$1"; MASTER_BED="$2"; OUT="$3"
+check_file "$FAMTAB"; check_file "$MASTER_BED"
+mkdir -p "$OUT"
+
+DELTA="${DELTA:-20}"              # UNIQUE_SEED contradiction threshold
+DELTA_AMBIG="${DELTA_AMBIG:-15}"  # CONFLICT/sub-locus/NO_SEED ambiguity threshold
+SEG_BIN="${SEG_BIN:-1000}"; SEG_MIN_RUN="${SEG_MIN_RUN:-10}"; SEG_MIN_LOCUS="${SEG_MIN_LOCUS:-2000}"
+export SEG_SHORT="${SEG_SHORT:-drop}"
+
+# families table -> parallel arrays
+declare -a FAMS=() MONOS=() BITS=() SEEDS=()
+while IFS=$'\t' read -r fam mono bits seed _; do
+  [[ -z "$fam" || "$fam" == \#* ]] && continue
+  [[ "$mono" =~ ^[0-9]+$ ]] || die "families.tsv: MONO must be an integer for $fam, got '$mono'"
+  FAMS+=("$fam"); MONOS+=("$mono"); BITS+=("$bits"); SEEDS+=("$seed")
+done < "$FAMTAB"
+NF_=${#FAMS[@]}
+(( NF_ >= 1 )) || die "families.tsv has no rows"
+FAMS_STR="${FAMS[*]}"
+
+# provenance column present?
+if awk -F'\t' 'NR==1{exit !(NF>=5)}' "$MASTER_BED"; then HAS_PROV=1; else HAS_PROV=0; fi
+
+log "Pre-flight (families=${FAMS_STR} DELTA=${DELTA} DELTA_AMBIG=${DELTA_AMBIG} SEG_SHORT=${SEG_SHORT} prov=${HAS_PROV})"
+for i in "${!FAMS[@]}"; do check_file "${BITS[$i]}"; check_file "${SEEDS[$i]}"; done
 command -v bedtools >/dev/null || die "bedtools not in PATH"
 command -v python3  >/dev/null || die "python3 not in PATH"
+command -v gawk     >/dev/null || die "gawk not in PATH (asorti)"
 
 ##############################################################################
 # D1
@@ -68,46 +87,45 @@ check_file "$OUT/MASTER.loci.bed"
 ##############################################################################
 log "D2: tagging seeds"
 
-cat \
-  <(awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,"CLsat1"}' "$SEED1") \
-  <(awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,"CLsat2"}' "$SEED2") \
-  <(awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,"CLsat3"}' "$SEED3") \
-  <(awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,"CLsat4"}' "$SEED4") \
-| sort -k1,1 -k2,2n > "$OUT/SEEDS.tagged.bed"
+for i in "${!FAMS[@]}"; do
+  awk -v F="${FAMS[$i]}" 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,F}' "${SEEDS[$i]}"
+done | sort -k1,1 -k2,2n > "$OUT/SEEDS.tagged.bed"
 check_file "$OUT/SEEDS.tagged.bed"
 
 ##############################################################################
-# D3 -- PATCHED: 0-based BED start; CLsat1=292bp
+# D3 -- PATCHED: 0-based BED start; window = 2 x MONO
 ##############################################################################
-log "D3: bits TSV -> BED (pos-1; CLsat1=292bp)"
+log "D3: bits TSV -> BED (pos-1; width 2 x MONO)"
 
-awk 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+292, $3}' "$BITS1" > "$OUT/CLsat1.bits.bed"
-awk 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+290, $3}' "$BITS2" > "$OUT/CLsat2.bits.bed"
-awk 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+292, $3}' "$BITS3" > "$OUT/CLsat3.bits.bed"
-awk 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+232, $3}' "$BITS4" > "$OUT/CLsat4.bits.bed"
-for f in "$OUT"/CLsat*.bits.bed; do check_file "$f"; done
+for i in "${!FAMS[@]}"; do
+  w=$(( 2 * MONOS[i] ))
+  awk -v W="$w" 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+W, $3}' "${BITS[$i]}" > "$OUT/${FAMS[$i]}.bits.bed"
+  check_file "$OUT/${FAMS[$i]}.bits.bed"
+done
 
 ##############################################################################
 # D3b -- PATCHED: deterministic sorted() tiebreak
 ##############################################################################
 log "D3b: segmenting composite loci"
 
-python3 - "$OUT/MASTER.loci.bed" "$BITS1" "$BITS2" "$BITS3" "$BITS4" \
-  "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" "$OUT/MASTER.loci.segmented.bed" <<'PYEOF'
+FAMBITS_ARGS=()
+for i in "${!FAMS[@]}"; do FAMBITS_ARGS+=("${FAMS[$i]}" "${BITS[$i]}"); done
+python3 - "$OUT/MASTER.loci.bed" "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" \
+  "$OUT/MASTER.loci.segmented.bed" "${FAMBITS_ARGS[@]}" <<'PYEOF'
 import sys, os
 from collections import defaultdict
-loci_file=sys.argv[1]; bits_files=sys.argv[2:6]
-families=["CLsat1","CLsat2","CLsat3","CLsat4"]
-BIN=int(sys.argv[6]); MIN_RUN=int(sys.argv[7])
-MIN_LOCUS=int(sys.argv[8]); out_file=sys.argv[9]
+loci_file=sys.argv[1]
+BIN=int(sys.argv[2]); MIN_RUN=int(sys.argv[3])
+MIN_LOCUS=int(sys.argv[4]); out_file=sys.argv[5]
+rest=sys.argv[6:]
+families=rest[0::2]; bits_files=rest[1::2]
 loci=[]
 with open(loci_file) as f:
     for line in f:
         p=line.rstrip("\n").split("\t"); loci.append((p[0],int(p[1]),int(p[2]),p[3]))
 print(f"  Loaded {len(loci)} loci",file=sys.stderr)
 bins=defaultdict(lambda:defaultdict(lambda:defaultdict(float)))
-for fi,bf in enumerate(bits_files):
-    fam=families[fi]
+for fam,bf in zip(families,bits_files):
     with open(bf) as f:
         f.readline()
         for line in f:
@@ -206,35 +224,36 @@ END{
 }' "$OUT/MASTER.locus_seed_hits.tsv" > "$OUT/MASTER.locus_seeds.tsv"
 check_file "$OUT/MASTER.locus_seeds.tsv"
 log "  Seed calls: $(wc -l < "$OUT/MASTER.locus_seeds.tsv")"
-log "  SEED_CONFLICT: $(grep -c SEED_CONFLICT "$OUT/MASTER.locus_seeds.tsv" || echo 0)"
+log "  SEED_CONFLICT: $(grep -c SEED_CONFLICT "$OUT/MASTER.locus_seeds.tsv" || true)"
 
 ##############################################################################
 # D4
 ##############################################################################
 log "D4: max bits per locus"
 
-for i in 1 2 3 4; do
-  bedtools intersect -a "$LOCI_BED" -b "$OUT/CLsat${i}.bits.bed" -wa -wb \
+for i in "${!FAMS[@]}"; do
+  fam="${FAMS[$i]}"
+  bedtools intersect -a "$LOCI_BED" -b "$OUT/${fam}.bits.bed" -wa -wb \
   | awk 'BEGIN{FS=OFS="\t"}
     { l=$4; b=$8; if(b>max[l]) max[l]=b }
     END{ for(l in max) print l,max[l] }' \
-  > "$OUT/MASTER.CLsat${i}.maxbits.tsv"
-  check_file "$OUT/MASTER.CLsat${i}.maxbits.tsv"
+  > "$OUT/MASTER.${fam}.maxbits.tsv"
+  check_file "$OUT/MASTER.${fam}.maxbits.tsv"
 done
 
 ##############################################################################
 # D5
 ##############################################################################
-log "D5: locus bits matrix"
+log "D5: locus bits matrix (columns: locus ${FAMS_STR})"
 
-cut -f4 "$LOCI_BED" | awk '{print $1,0,0,0,0}' OFS="\t" > "$OUT/MASTER.locus_bits.tsv"
+cut -f4 "$LOCI_BED" | awk -v N="$NF_" 'BEGIN{OFS="\t"}{s=$1; for(i=1;i<=N;i++) s=s OFS 0; print s}' > "$OUT/MASTER.locus_bits.tsv"
 
-for i in 1 2 3 4; do
-  col=$((i+1))
+for i in "${!FAMS[@]}"; do
+  col=$((i+2))
   awk -v C="$col" 'BEGIN{FS=OFS="\t"}
   FNR==NR{b[$1]=$2; next}
   { if($1 in b) $C=b[$1]; print }
-  ' "$OUT/MASTER.CLsat${i}.maxbits.tsv" "$OUT/MASTER.locus_bits.tsv" \
+  ' "$OUT/MASTER.${FAMS[$i]}.maxbits.tsv" "$OUT/MASTER.locus_bits.tsv" \
   > "$OUT/tmp" && mv "$OUT/tmp" "$OUT/MASTER.locus_bits.tsv"
 done
 
@@ -243,14 +262,14 @@ done
 ##############################################################################
 log "D6: arbitration (three-branch)"
 
-awk -v D="$DELTA" -v DA="$DELTA_AMBIG" 'BEGIN{FS=OFS="\t"}
+gawk -v D="$DELTA" -v DA="$DELTA_AMBIG" -v FAMS="$FAMS_STR" 'BEGIN{FS=OFS="\t"; nf=split(FAMS,fam," ")}
 
 FNR==NR{ if(FNR==1) next; seed[$1]=$2; next }
 
 {
   l=$1
-  bits["CLsat1"]=$2+0; bits["CLsat2"]=$3+0
-  bits["CLsat3"]=$4+0; bits["CLsat4"]=$5+0
+  delete bits
+  for(fi=1;fi<=nf;fi++) bits[fam[fi]]=$(fi+1)+0
   s=seed[l]
 
   # Branch 1: SEED_CONFLICT or sub-locus
@@ -320,4 +339,4 @@ echo "Provenance (col8):"
 awk -F'\t' '{print $8}' "$OUT/MASTER.final_assignment.tsv" | sort | uniq -c | sort -rn
 echo ""
 echo "Schema: locus_id|family|assigned_bits|best_other|best_other_bits|delta|flag|provenance"
-echo "DELTA=$DELTA  DELTA_AMBIG=$DELTA_AMBIG"
+echo "DELTA=$DELTA  DELTA_AMBIG=$DELTA_AMBIG  SEG_SHORT=$SEG_SHORT  families=$FAMS_STR"

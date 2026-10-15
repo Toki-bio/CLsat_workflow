@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-"""STAGE 2: refine every locus boundary to NUCLEOTIDE resolution.
+"""Refine every locus boundary to NUCLEOTIDE resolution.
 
-Needed for ALL four families, not just CLsat1. CLsat2/3/4 were expanded correctly, but with
-STEP_MON=3 the walk discards a whole failing 438 bp window, so their edges are quantised and
-can sit up to ~438 bp inside the true array end. The expansion finds the right WINDOW; this
-finds the right BASE.
+Needed for every family: with STEP_MON=3 the expansion walk discards a whole failing window
+(3 x MONO), so edges are quantised and can sit up to ~3 monomers inside the true array end.
+The expansion finds the right WINDOW; this finds the right BASE.
 
 The rule (validated against a manual call on V1, which the user checked by hand):
   edge = the LAST BASE THAT MATCHES the locus's own end-local consensus, scanning outward,
@@ -26,36 +25,57 @@ Why each piece is there, all of them learned the hard way:
 
 Emits a refined BED plus a per-end report, and flags contig edges (which are assembly
 truncations, not biological array ends, and must never be treated as boundaries).
+
+Usage: refine_edges.py <loci.bed> <out_prefix> <genomes.tsv> <families.tsv>
+  loci.bed      chrom  start0  end  species  family   (5 columns; family = the locus's call)
+  genomes.tsv   species_code  genome.fa (indexed)
+  families.tsv  family  mono  consensus.fa
+Environment: EDGE_TOL [50]  MAXMISS [4]  GAP_TOL [150]  LEAD_TOL [30]  MIN_ALEN_FRAC [0.85]
+             MIN_BITS_FRAC [0.55]  MIN_BLOCK [60]  PAD [1500]
+Tools: ssearch36, samtools on PATH.
 """
-import subprocess, os, sys, tempfile, collections
+import collections
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 
-BED_IN = sys.argv[1] if len(sys.argv) > 1 else '/staging/tmp/clsat_v6/full/MERGED.bed'
-OUT = sys.argv[2] if len(sys.argv) > 2 else '/staging/tmp/clsat_v6/full/REFINED'
+if len(sys.argv) != 5:
+    sys.exit('Usage: refine_edges.py <loci.bed> <out_prefix> <genomes.tsv> <families.tsv>')
+BED_IN, OUT, GENOMES_TSV, FAMILIES_TSV = sys.argv[1:5]
 
-BIN = '/staging/conda/envs/bioinfo/bin'
-W = '/staging/tmp/mash_parentcheck'
-SD = ('/staging/Sergei/Lacertidae/Darevskia/Satellites/motifs_output/clean/'
-      'cross_clusters/selected/subclusters/seeds')
-SS = BIN + '/ssearch36'
-SAM = BIN + '/samtools'
+SS = shutil.which('ssearch36') or sys.exit('ssearch36 not on PATH')
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
 
-MAXMISS = 4
-GAP_TOL = 150
-LEAD_TOL = 30
-MIN_ALEN_FRAC = 0.85
-MIN_BITS_FRAC = 0.55
-MIN_BLOCK = 60
-EDGE_TOL = 50
-PAD = 1500          # how far outside the called edge we look
+MAXMISS = int(os.environ.get('MAXMISS', 4))
+GAP_TOL = int(os.environ.get('GAP_TOL', 150))
+LEAD_TOL = int(os.environ.get('LEAD_TOL', 30))
+MIN_ALEN_FRAC = float(os.environ.get('MIN_ALEN_FRAC', 0.85))
+MIN_BITS_FRAC = float(os.environ.get('MIN_BITS_FRAC', 0.55))
+MIN_BLOCK = int(os.environ.get('MIN_BLOCK', 60))
+EDGE_TOL = int(os.environ.get('EDGE_TOL', 50))
+PAD = int(os.environ.get('PAD', 1500))          # how far outside the called edge we look
 
-MONO = {'CLsat1': 146, 'CLsat2': 145, 'CLsat3': 146, 'CLsat4': 116}
-FAMCONS = {f: ''.join(l.strip() for l in open(SD + '/%s.cons.fa' % f)
-                      if not l.startswith('>')).upper() for f in MONO}
-GEN = {}
-for line in open(SD + '/genomes.tsv'):
-    p = line.rstrip('\n').split('\t')
-    if len(p) >= 2:
-        GEN[p[0]] = p[1]
+
+def read_tsv(path, min_cols):
+    rows = []
+    for line in open(path):
+        if not line.strip() or line.startswith('#'):
+            continue
+        p = line.rstrip('\n').split('\t')
+        if len(p) < min_cols:
+            sys.exit('%s: need %d columns, got %r' % (path, min_cols, line.strip()))
+        rows.append(p)
+    return rows
+
+
+MONO = {}
+FAMCONS = {}
+for p in read_tsv(FAMILIES_TSV, 3):
+    MONO[p[0]] = int(p[1])
+    FAMCONS[p[0]] = ''.join(l.strip() for l in open(p[2]) if not l.startswith('>')).upper()
+GEN = {p[0]: p[1] for p in read_tsv(GENOMES_TSV, 2)}
 SL = {}
 for sp, g in GEN.items():
     for line in open(g + '.fai'):
@@ -63,11 +83,16 @@ for sp, g in GEN.items():
         SL[(sp, p[0])] = int(p[1])
 
 TR = str.maketrans('ACGTN', 'TGCAN')
+
+
 def rc(s):
     return s.translate(TR)[::-1]
-def ident(a, b):
-    n = min(len(a), len(b))
-    return sum(1 for i in range(n) if a[i] == b[i]) / n if n else 0.0
+
+
+def ident(x, y):
+    n = min(len(x), len(y))
+    return sum(1 for i in range(n) if x[i] == y[i]) / n if n else 0.0
+
 
 def faidx(sp, scf, s, e):
     s = max(1, s)
@@ -79,6 +104,7 @@ def faidx(sp, scf, s, e):
     if r.returncode:
         return ''
     return ''.join(l.strip() for l in r.stdout.splitlines() if not l.startswith('>')).upper()
+
 
 def sat_cov(seq, lib, wlen, step, cov=None):
     if cov is None:
@@ -112,15 +138,16 @@ def sat_cov(seq, lib, wlen, step, cov=None):
                 cov[i] = 1
     return cov
 
+
 def end_consensus(arr_out, M):
     """arr_out runs ARRAY->OUTWARD; build a consensus from the terminal monomers,
     each phased individually, and say which family they look like."""
     mons = []
     for k in range(30):
-        a = k * M
-        if a + 3 * M > len(arr_out):
+        x = k * M
+        if x + 3 * M > len(arr_out):
             break
-        seg = arr_out[a:a + 3 * M]
+        seg = arr_out[x:x + 3 * M]
         b = (0, -1, None)
         for f2, c in FAMCONS.items():
             if MONO[f2] != M:
@@ -148,6 +175,7 @@ def end_consensus(arr_out, M):
     mid = sorted(ident(m, con) for m in ms)[len(ms) // 2]
     return con, fam, mid
 
+
 def refine_one_end(sp, scf, edge, direction, fam_hint):
     """edge = 1-based coord of the last base INSIDE the array on this side.
     direction = +1 (array is to the LEFT, we walk right) or -1 (array is to the RIGHT).
@@ -172,20 +200,24 @@ def refine_one_end(sp, scf, edge, direction, fam_hint):
     if gedge <= EDGE_TOL or gedge >= L - EDGE_TOL:
         return edge, 0, 'CONTIG_EDGE', fam_hint, 0.0
 
-    con, fam, conf = end_consensus(arr_out[max(0, e0 - 30 * M):e0][::-1][::-1], M)
+    con, fam, conf = end_consensus(arr_out[max(0, e0 - 30 * M):e0], M)
     if not con:
         return edge, 0, 'no_consensus', fam_hint, 0.0
-    lib = '/tmp/_ref_lib.fa'
-    open(lib, 'w').write('>c\n%s%s\n' % (con, con))
-
-    cov = sat_cov(arr_out, lib, 60, 20)
-    d = 0
-    while e0 + d < len(arr_out) and cov[e0 + d]:
-        d += 1
-    lo = max(0, e0 + d - 300)
-    hi = min(len(arr_out), e0 + d + 300)
-    sub = arr_out[lo:hi]
-    fc = sat_cov(sub, lib, 40, 1)
+    # per-call temp library (the former fixed /tmp path collided under parallel runs)
+    with tempfile.NamedTemporaryFile('w', suffix='.fa', delete=False) as lf:
+        lf.write('>c\n%s%s\n' % (con, con))
+        lib = lf.name
+    try:
+        cov = sat_cov(arr_out, lib, 60, 20)
+        d = 0
+        while e0 + d < len(arr_out) and cov[e0 + d]:
+            d += 1
+        lo = max(0, e0 + d - 300)
+        hi = min(len(arr_out), e0 + d + 300)
+        sub = arr_out[lo:hi]
+        fc = sat_cov(sub, lib, 40, 1)
+    finally:
+        os.unlink(lib)
     for i in range(len(sub)):
         if fc[i]:
             cov[lo + i] = 1
@@ -239,8 +271,13 @@ def refine_one_end(sp, scf, edge, direction, fam_hint):
 loci = []
 for line in open(BED_IN):
     p = line.rstrip('\n').split('\t')
-    if len(p) >= 4:
-        loci.append((p[0], int(p[1]), int(p[2]), p[3], p[4] if len(p) > 4 else 'CLsat1'))
+    if not p or not p[0] or p[0].startswith('#'):
+        continue
+    if len(p) < 5:
+        sys.exit('%s: need 5 columns (chrom start end species family), got %r' % (BED_IN, line.strip()))
+    if p[4] not in MONO:
+        sys.exit('%s: family %r is not in %s' % (BED_IN, p[4], FAMILIES_TSV))
+    loci.append((p[0], int(p[1]), int(p[2]), p[3], p[4]))
 print('loci to refine: %d' % len(loci), flush=True)
 
 fb = open(OUT + '.bed', 'w')

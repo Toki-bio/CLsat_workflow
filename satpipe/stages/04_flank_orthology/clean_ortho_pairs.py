@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""CLEAN flank-orthology from the fixed loci, with per-pair FASTA alignments for manual audit.
+"""CLEAN flank-orthology from the expanded loci, with per-pair FASTA alignments for manual audit.
 
-Replaces the contaminated published orthology entirely. Chain:
-  1. loci = v6 CLsat1 (MIN_ALN fixed) + published CLsat2/3/4, merged per species+scaffold
+Chain:
+  1. loci = the expansion BEDs of every family, merged per species+scaffold
   2. for each locus, take flanks OUTSIDE the array; OVERLAP GUARD: a flank may not overlap any
      other locus (this is the bug that contaminated 35% of the old 'unique' flanks)
-  3. classify each flank: satellite (matches a CLsat consensus) / low-complexity/telomeric /
+  3. classify each flank: satellite (matches a family consensus) / low-complexity/telomeric /
      unique. Only UNIQUE flanks are anchors.
   4. cross-assembly orthology: ssearch36 (NOT blastn), single best cross-assembly hit per
      target assembly per query, >=200 bp aligned, >=80% identity
@@ -13,35 +13,70 @@ Replaces the contaminated published orthology entirely. Chain:
      (array->outward; UPPERCASE = residual satellite, lowercase = unique) so the shared unique
      sequence can be eyeballed. Plus the orthology matrix.
 
-Outputs in /staging/tmp/clsat_v6/ortho/:
-  loci.bed  flanks.fa  flank_class.tsv  ortho_pairs.tsv  ortho_matrix.txt
-  ortho_pairs_alignments.fasta   <-- the manual-inspection file
+Usage:
+  clean_ortho_pairs.py --expansions expansions.tsv --genomes genomes.tsv --families families.tsv
+                       --out OUT_DIR [--flank 600] [--min-aln 200] [--min-pid 80] [--guard 0]
+                       [--priority-pairs unp:nai,unp:val] [--max-alignments 120]
+  expansions.tsv  family  expanded_merged.bed   (stage-11 output per family; col4 = species|...)
+  genomes.tsv     species_code  genome.fa        (order = matrix order)
+  families.tsv    family  mono  consensus.fa
+Tools: ssearch36, samtools, needle (EMBOSS) on PATH.
+Outputs in OUT_DIR: loci.bed  flank_class.tsv  ortho_pairs.tsv  ortho_matrix.txt
+                    ortho_pairs_alignments.fasta   <-- the manual-inspection file
 """
-import subprocess, os, collections, tempfile, random
+import argparse
+import collections
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 
-BIN = '/staging/conda/envs/bioinfo/bin'
-W = '/staging/tmp/mash_parentcheck'
-V6 = '/staging/tmp/clsat_v6/full'
-SD = ('/staging/Sergei/Lacertidae/Darevskia/Satellites/motifs_output/clean/'
-      'cross_clusters/selected/subclusters/seeds')
-PUB = '/staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/CLsat_full_clusters_6genome'
-OUT = '/staging/tmp/clsat_v6/ortho'
+
+def read_tsv(path, min_cols):
+    rows = []
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip() or line.startswith('#'):
+                continue
+            p = line.rstrip('\n').split('\t')
+            if len(p) < min_cols:
+                sys.exit('%s: need %d columns, got %r' % (path, min_cols, line.strip()))
+            rows.append(p)
+    return rows
+
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument('--expansions', required=True)
+ap.add_argument('--genomes', required=True)
+ap.add_argument('--families', required=True)
+ap.add_argument('--out', required=True)
+ap.add_argument('--flank', type=int, default=600)
+ap.add_argument('--min-aln', type=int, default=200)
+ap.add_argument('--min-pid', type=float, default=80.0)
+ap.add_argument('--guard', type=int, default=0)
+ap.add_argument('--priority-pairs', default='', help='species pairs a:b,... listed first in the alignment file')
+ap.add_argument('--max-alignments', type=int, default=120)
+a = ap.parse_args()
+
+OUT = a.out
 os.makedirs(OUT, exist_ok=True)
-SS = BIN + '/ssearch36'
-SAM = BIN + '/samtools'
+SS = shutil.which('ssearch36') or sys.exit('ssearch36 not on PATH')
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
+NEEDLE = shutil.which('needle') or sys.exit('needle (EMBOSS) not on PATH')
 
-FLANK = 600           # bp of flank to test/align
-MIN_ALN = 200
-MIN_PID = 80.0
-GUARD = 0             # a flank may not come within GUARD bp of another locus
+FLANK = a.flank           # bp of flank to test/align
+MIN_ALN = a.min_aln
+MIN_PID = a.min_pid
+GUARD = a.guard           # a flank may not come within GUARD bp of another locus
 
 GEN = {}
-for line in open(SD + '/genomes.tsv'):
-    p = line.rstrip('\n').split('\t')
-    if len(p) >= 2:
-        GEN[p[0]] = p[1]
-CONS = {f: ''.join(l.strip() for l in open(SD + '/%s.cons.fa' % f) if not l.startswith('>')).upper()
-        for f in ('CLsat1', 'CLsat2', 'CLsat3', 'CLsat4')}
+ASM = []
+for p in read_tsv(a.genomes, 2):
+    GEN[p[0]] = p[1]
+    ASM.append(p[0])
+CONS = {p[0]: ''.join(l.strip() for l in open(p[2]) if not l.startswith('>')).upper()
+        for p in read_tsv(a.families, 3)}
 with open(OUT + '/allcons.x2.fa', 'w') as f:
     for fam, s in CONS.items():
         f.write('>%s\n%s%s\n' % (fam, s, s))
@@ -55,15 +90,8 @@ rc = lambda s: s.translate(TR)[::-1]
 
 # ---- 1. build the loci ----
 raw = []
-for line in open(V6 + '/v6full_CLsat1.expanded_merged.bed'):
-    p = line.rstrip('\n').split('\t')
-    if len(p) >= 4:
-        raw.append((p[3].split('|')[0], p[0], int(p[1]), int(p[2]), 'CLsat1'))
-# CLsat2-4: the Jun-12 expansions (file name suffix _v4 is historical; see PIPELINE.md);
-# CLsat1 above is the cli_v6 re-expansion. This is the input mix the catalogue was built from.
-for fam in ('CLsat2', 'CLsat3', 'CLsat4'):
-    fn = SD + '/out_%s_v4.expanded_merged.bed' % fam
-    for line in open(fn):
+for fam, bed in ((p[0], p[1]) for p in read_tsv(a.expansions, 2)):
+    for line in open(bed):
         p = line.rstrip('\n').split('\t')
         if len(p) >= 4:
             raw.append((p[3].split('|')[0], p[0], int(p[1]), int(p[2]), fam))
@@ -89,12 +117,14 @@ lidx = collections.defaultdict(list)
 for i, (sp, scf, s, e, fams) in enumerate(loci):
     lidx[(sp, scf)].append((s, e, i))
 
+
 def faidx(sp, scf, s, e):
     s = max(1, s); e = min(SL[(sp, scf)], e)
     if e < s:
         return ''
     r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scf, s, e)], capture_output=True, text=True)
     return ''.join(l.strip() for l in r.stdout.splitlines() if not l.startswith('>')).upper() if not r.returncode else ''
+
 
 # ---- 2/3. flanks with overlap guard + classification ----
 def overlaps_other(sp, scf, fs, fe, self_i):
@@ -105,6 +135,7 @@ def overlaps_other(sp, scf, fs, fe, self_i):
             return True
     return False
 
+
 def classify(seq):
     if len(seq) < MIN_ALN:
         return 'truncated'
@@ -114,6 +145,7 @@ def classify(seq):
     if len(set(fu[i:i+4] for i in range(len(fu)-3))) / max(1, len(fu)-3) < 0.35:
         return 'lowcomplex'
     return 'unique'
+
 
 flanks = {}          # (locus_i, side) -> (sp, seq_oriented_array->outward, genomic (scf,s,e))
 fclass = {}
@@ -130,7 +162,7 @@ for i, (sp, scf, s, e, fams) in enumerate(loci):
         seq = faidx(sp, scf, fs, fe)
         if not seq:
             fclass[(i, side)] = 'truncated'; continue
-        # also drop if it matches a CLsat consensus (residual satellite not caught by coords)
+        # also drop if it matches a family consensus (residual satellite not caught by coords)
         oriented = seq if side == 'R' else rc(seq)     # array->outward
         kl = classify(seq)
         fclass[(i, side)] = kl
@@ -201,27 +233,28 @@ for q, d in best.items():
 
 # ---- matrix ----
 M = collections.Counter()
-for (a, b) in pairs:
-    M[tuple(sorted((loci[int(a.split('_')[0])][0], loci[int(b.split('_')[0])][0])))] += 1
-ASM = ['mix', 'arm', 'val', 'unp', 'unm', 'nai']
+for (x, y) in pairs:
+    M[tuple(sorted((loci[int(x.split('_')[0])][0], loci[int(y.split('_')[0])][0])))] += 1
 with open(OUT + '/ortho_matrix.txt', 'w') as f:
     hdr = '      ' + ''.join('%6s' % x for x in ASM)
     f.write(hdr + '\n'); print('\n=== CLEAN ORTHOLOGY MATRIX ==='); print(hdr)
-    for a in ASM:
-        row = '%5s ' % a + ''.join('     -' if a == b else '%6d' % M[tuple(sorted((a, b)))] for b in ASM)
+    for x in ASM:
+        row = '%5s ' % x + ''.join('     -' if x == y else '%6d' % M[tuple(sorted((x, y)))] for y in ASM)
         f.write(row + '\n'); print(row)
     tot = 'total unique undirected pairs: %d' % len(pairs)
     f.write('\n' + tot + '\n'); print('\n' + tot)
-    key = 'KEY: unp-nai=%d  unp-val=%d  unm-nai=%d  unm-val=%d' % (
-        M[('nai', 'unp')], M[('unp', 'val')], M[('nai', 'unm')], M[('unm', 'val')])
-    f.write(key + '\n'); print(key)
+    if a.priority_pairs:
+        key = 'KEY: ' + '  '.join('%s-%s=%d' % (x, y, M[tuple(sorted((x, y)))])
+                                  for x, y in (kp.split(':') for kp in a.priority_pairs.split(',')))
+        f.write(key + '\n'); print(key)
+
 
 # ---- 5. per-pair FASTA alignments for manual audit ----
-def sw_align(a, b):
-    """gapped Needleman-ish local via ssearch; return the two aligned strings for display."""
-    fa = tempfile.NamedTemporaryFile('w', suffix='.fa', delete=False); fa.write('>a\n%s\n' % a); fa.close()
-    fb = tempfile.NamedTemporaryFile('w', suffix='.fa', delete=False); fb.write('>b\n%s\n' % b); fb.close()
-    o = subprocess.run([BIN + '/needle', '-asequence', fa.name, '-bsequence', fb.name,
+def sw_align(x, y):
+    """global alignment via EMBOSS needle; return the two aligned strings for display."""
+    fa = tempfile.NamedTemporaryFile('w', suffix='.fa', delete=False); fa.write('>a\n%s\n' % x); fa.close()
+    fb = tempfile.NamedTemporaryFile('w', suffix='.fa', delete=False); fb.write('>b\n%s\n' % y); fb.close()
+    o = subprocess.run([NEEDLE, '-asequence', fa.name, '-bsequence', fb.name,
                         '-gapopen', '10', '-gapextend', '0.5', '-aformat', 'fasta',
                         '-stdout', '-auto'], capture_output=True, text=True).stdout
     os.unlink(fa.name); os.unlink(fb.name)
@@ -235,14 +268,18 @@ def sw_align(a, b):
             cur.append(line.strip())
     if cur:
         seqs.append(''.join(cur))
-    return (seqs[0], seqs[1]) if len(seqs) >= 2 else (a, b)
+    return (seqs[0], seqs[1]) if len(seqs) >= 2 else (x, y)
 
-random.seed(1)
+
+PRIO = set(tuple(sorted(kp.split(':'))) for kp in a.priority_pairs.split(',') if kp)
 pl = sorted(pairs)
-# prioritise the cross-haplotype pairs the paper cares about
+
+
 def pr(k):
     sps = tuple(sorted((loci[int(k[0].split('_')[0])][0], loci[int(k[1].split('_')[0])][0])))
-    return 0 if sps in (('nai', 'unp'), ('unp', 'val'), ('nai', 'unm'), ('unm', 'val')) else 1
+    return 0 if sps in PRIO else 1
+
+
 pl.sort(key=pr)
 with open(OUT + '/ortho_pairs_alignments.fasta', 'w') as f:
     f.write('; CLEAN flank-orthology pairs for manual validation.\n')
@@ -252,7 +289,7 @@ with open(OUT + '/ortho_pairs_alignments.fasta', 'w') as f:
     f.write('; stretches, the orthology is real; if they only match in low-complexity, it is not.\n\n')
     shown = 0
     for k in pl:
-        if shown >= 120:
+        if shown >= a.max_alignments:
             break
         qi, qs = int(k[0].split('_')[0]), k[0].split('_')[1]
         ti, ts = int(k[1].split('_')[0]), k[1].split('_')[1]
@@ -266,14 +303,14 @@ with open(OUT + '/ortho_pairs_alignments.fasta', 'w') as f:
                 % (qi + 1, sa[0], qs, ti + 1, sb[0], ts, pid, alen, bits))
         f.write('    %s %s:%d-%d\n    %s %s:%d-%d\n' % (sa[0], sa[2][0], sa[2][1], sa[2][2],
                                                         sb[0], sb[2][0], sb[2][1], sb[2][2]))
-        for a in range(0, len(A), 100):
-            f.write('  %s  %s\n' % (sa[0][:3], A[a:a+100]))
-            f.write('       %s\n' % mstr[a:a+100])
-            f.write('  %s  %s\n\n' % (sb[0][:3], B[a:a+100]))
+        for x in range(0, len(A), 100):
+            f.write('  %s  %s\n' % (sa[0][:3], A[x:x+100]))
+            f.write('       %s\n' % mstr[x:x+100])
+            f.write('  %s  %s\n\n' % (sb[0][:3], B[x:x+100]))
         shown += 1
 print('\nwrote %s/ortho_pairs_alignments.fasta (%d pairs)' % (OUT, shown))
-print('wrote %s/ortho_matrix.txt, loci.bed, flank_class.tsv-equivalent' % OUT)
 with open(OUT + '/flank_class.tsv', 'w') as f:
     f.write('locus\tside\tclass\n')
     for (i, side), kl in fclass.items():
         f.write('R%d\t%s\t%s\n' % (i + 1, side, kl))
+print('wrote %s/ortho_matrix.txt, loci.bed, flank_class.tsv' % OUT)

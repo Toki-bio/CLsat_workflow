@@ -1,33 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
-V=/staging/tmp/clsat_v6
-IN=$V/refine_input_540.bed
-OUT=$V/refined_540_20260716
-NJOBS=16
+# Run refine_edges.py on a locus BED in parallel chunks and merge the pieces back, renumbering
+# loci R1..Rn in the original order.
+#
+# Usage: run_refine_edges_parallel.sh <loci.bed> <out_prefix> <genomes.tsv> <families.tsv>
+#   loci.bed  chrom start0 end species family (5 columns)
+# Environment: NJOBS [16]
+# Output: <out_prefix>.bed, <out_prefix>.report.tsv, <out_prefix>.DONE; chunks in <out_prefix>.chunks/
+[[ $# -eq 4 ]] || { echo "Usage: $0 <loci.bed> <out_prefix> <genomes.tsv> <families.tsv>" >&2; exit 1; }
+IN="$1"; OUT="$2"; GENOMES="$3"; FAMILIES="$4"
+NJOBS="${NJOBS:-16}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+command -v parallel >/dev/null || { echo "GNU parallel not in PATH" >&2; exit 1; }
 
-WORK=$V/refine_chunks
-rm -rf $WORK
-mkdir -p $WORK
+WORK="$OUT.chunks"
+rm -rf "$WORK"
+mkdir -p "$WORK" "$(dirname "$OUT")"
 
-echo "=== splitting $(wc -l < $IN) loci into $NJOBS chunks ==="
-split -n l/$NJOBS -d -a 2 $IN $WORK/chunk_
+echo "=== splitting $(wc -l < "$IN") loci into $NJOBS chunks ==="
+split -n l/"$NJOBS" -d -a 2 "$IN" "$WORK/chunk_"
 
 echo "=== running refine_edges.py on each chunk in parallel ==="
 run_one() {
   cf="$1"
   base=$(basename "$cf")
-  python3 $V/refine_edges.py "$cf" "$WORK/${base}.out" > "$WORK/${base}.log" 2>&1
+  python3 "$HERE/refine_edges.py" "$cf" "$WORK/${base}.out" "$GENOMES" "$FAMILIES" > "$WORK/${base}.log" 2>&1
 }
 export -f run_one
-export V WORK
-ls $WORK/chunk_* | /staging/conda/envs/bioinfo/bin/parallel --jobs $NJOBS run_one {}
+export HERE WORK GENOMES FAMILIES
+ls "$WORK"/chunk_?? | parallel --jobs "$NJOBS" run_one {}
 
 echo "=== merging chunk outputs, renumbering loci to match original order ==="
-python3 - <<'PYEOF'
-import glob, re
+python3 - "$WORK" "$OUT" <<'PYEOF'
+import glob, sys
 
-WORK = '/staging/tmp/clsat_v6/refine_chunks'
-OUT = '/staging/tmp/clsat_v6/refined_540_20260716'
+WORK, OUT = sys.argv[1], sys.argv[2]
 
 # chunk files in original split order (chunk_00, chunk_01, ...)
 chunk_bases = sorted(glob.glob(f'{WORK}/chunk_*.out.bed'))
@@ -37,7 +44,6 @@ bed_out = open(f'{OUT}.bed', 'w')
 rep_out = open(f'{OUT}.report.tsv', 'w')
 header_written = False
 global_i = 0
-old_to_new = {}  # (chunk_base, old_Rn) -> new_Rn
 
 for cb in chunk_bases:
     bed_lines = open(f'{cb}.bed').readlines()
@@ -49,7 +55,6 @@ for cb in chunk_bases:
     for bl, rl in zip(bed_lines, rep_lines):
         global_i += 1
         p = bl.rstrip('\n').split('\t')
-        old_r = p[3]
         p[3] = f'R{global_i}'
         bed_out.write('\t'.join(p) + '\n')
         rp = rl.rstrip('\n').split('\t')
@@ -61,5 +66,5 @@ rep_out.close()
 print(f'merged {global_i} loci -> {OUT}.bed, {OUT}.report.tsv')
 PYEOF
 
-touch $OUT.DONE
+touch "$OUT.DONE"
 echo REFINE_PARALLEL_DONE

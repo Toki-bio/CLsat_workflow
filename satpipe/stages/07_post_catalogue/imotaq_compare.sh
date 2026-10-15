@@ -32,10 +32,13 @@
 #       83.3% over 54 bp; nothing >=100 bp, nothing >=85%.
 #   Consistent with pericentromeric heterochromatin being under-represented in a
 #   contig-only assembly, or the clones coming from a different population.
+#
+# Usage: imotaq_compare.sh [out_dir] [darsat.fa] [genome.fna DarSat2.fa]
+# Tools: ssearch36, curl (and makeblastdb/blastn for the optional step 4) on PATH.
 # =============================================================================
 set -euo pipefail
 
-SS=/staging/conda/envs/bioinfo/bin/ssearch36
+command -v ssearch36 >/dev/null || { echo "ssearch36 not in PATH" >&2; exit 1; }
 DARSAT=$(readlink -f "${2:-DarSat_all_consensus.fa}")   # the 39 family consensuses (Additional file 2)
 OUT=${1:-./imotaq}
 E=https://eutils.ncbi.nlm.nih.gov/entrez/eutils
@@ -57,7 +60,7 @@ awk '/^>/{if(s)print h"\n"s s; h=$0; s=""; next}{s=s$0}END{print h"\n"s s}' \
     "$DARSAT" > darsat_doubled.fa
 
 # --- 3. all-vs-all and tally the best family per clone ----------------------
-"$SS" -n -m 8C -E 10 -b 5000 imotaq.fasta darsat_doubled.fa 2>/dev/null > hits.tsv
+ssearch36 -n -m 8C -E 10 -b 5000 imotaq.fasta darsat_doubled.fa 2>/dev/null > hits.tsv
 
 echo
 echo "best DarSat family per IMO-TaqI clone, tallied:"
@@ -74,12 +77,12 @@ awk '!/^#/{if($12>b[$2]){b[$2]=$12; p[$2]=$3; a[$2]=$4}}
     hits.tsv | sort -k3,3nr | head -6
 
 # --- 4. optional: is the family really absent from a given assembly? --------
-# usage: bash imotaq_compare.sh <outdir> <genome.fna> <DarSat2.fa>
-if [ "${2:-}" ] && [ "${3:-}" ]; then
+# usage: bash imotaq_compare.sh <outdir> <darsat.fa> <genome.fna> <DarSat2.fa>
+if [ "${3:-}" ] && [ "${4:-}" ]; then
   echo
-  echo "whole-genome check of $(basename "$3") against $(basename "$2"):"
-  makeblastdb -in "$2" -dbtype nucl -out gdb >/dev/null 2>&1
-  blastn -task blastn -word_size 11 -query "$3" -db gdb -evalue 1e-3 \
+  echo "whole-genome check of $(basename "$4") against $(basename "$3"):"
+  makeblastdb -in "$3" -dbtype nucl -out gdb >/dev/null 2>&1
+  blastn -task blastn -word_size 11 -query "$4" -db gdb -evalue 1e-3 \
          -outfmt "6 qseqid sseqid pident length evalue bitscore" 2>/dev/null \
     | sort -k6,6gr | head
 fi

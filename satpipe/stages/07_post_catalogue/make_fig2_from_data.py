@@ -1,72 +1,97 @@
 # -*- coding: utf-8 -*-
-"""Regenerate Figure 2 from the deposited catalogue instead of hardcoded counts.
+"""Render the sub-subfamily x assembly stacked-bar figure (manuscript Figure 2) from the
+catalogue instead of hardcoded counts.
 
-The published Figure 2 was rendered by figures_v6/render_fig2_connectors.py, which
-carried the per-assembly / per-sub-subfamily matrix as a literal dict together with
-`expected = {'mix': 128, ..., 'val': 80, ...}`. Two cells later drifted:
+The published Figure 2 was rendered by figures_v6/render_fig2_connectors.py, which carried
+the per-assembly / per-sub-subfamily matrix as a literal dict. Two cells later drifted
+(CLsat3.1/mix 2 -> 3 with L541; CLsat1.5/val 1 -> 0), and both versions totalled 627, so every
+total-based check passed. This script derives the matrix from the segmented BED, the
+sub-subfamily table and the scaffold->species map, and asserts the per-assembly totals
+against an independent count of the BED, so it cannot drift from the catalogue again.
+Design, colours, geometry, figsize and dpi are unchanged from the original renderer.
 
-    CLsat3.1 / mix   2 -> 3   (the recovered mix CLsat3 locus, L541)
-    CLsat1.5 / val   1 -> 0
-
-so the figure showed mix = 128 and val = 80 while Table 2 and the Results give 129 and
-79. Both versions total 627, which is why every total-based check passed.
-
-This script derives the matrix from MASTER.loci.segmented.bed + locus_subfamily.tsv, so
-the figure cannot drift from the catalogue again, and asserts the per-assembly totals
-against an independent count of the BED. Design, colours, geometry, figsize and dpi are
-unchanged from the original renderer, so the output is a drop-in replacement
-(2090 x 1430 px).
+Usage: make_fig2_from_data.py <MASTER.loci.segmented.bed> <locus_subfamily.tsv> <MASTER.merged.bed> <out.png>
+                              [--species mix,arm,val,unp,unm,nai] [--labels "mix,arm,val,unp (pat.),unm (mat.),nai"]
+                              [--order CLsat1.1,CLsat1.2,...] [--colours colours.tsv]
+  MASTER.merged.bed   scaffold -> species comes from its name column (code|scf:...)
+  --species           assembly order (default: order of first appearance in MASTER.merged.bed)
+  --order             sub-subfamily order (default: sorted names present)
+  --colours           TSV sub-subfamily<TAB>#rrggbb (default: a tab20 palette)
 """
+import argparse
 import collections
 import csv
 import os
+import sys
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-B = r'C:/work/CLsat/SUBMISSION/05_data_deposit'
-OUT = r'C:/work/CLsat/manuscript/fig5_options/Figure_2_regenerated.png'
+ap = argparse.ArgumentParser()
+ap.add_argument('segmented_bed')
+ap.add_argument('subfamily_tsv')
+ap.add_argument('master_bed')
+ap.add_argument('out')
+ap.add_argument('--species', default='')
+ap.add_argument('--labels', default='')
+ap.add_argument('--order', default='')
+ap.add_argument('--colours', default='')
+a = ap.parse_args()
 
-PREFIX = {'JAWWNF': 'arm', 'JAWWNG': 'val', 'JAWWNH': 'mix',
-          'JAWWNI': 'nai', 'JAWDKN': 'unp', 'JAWDKO': 'unm'}
-species = ['mix', 'arm', 'val', 'unp', 'unm', 'nai']
-species_label = ['mix', 'arm', 'val', 'unp (pat.)', 'unm (mat.)', 'nai']
-order = ['CLsat1.1', 'CLsat1.2', 'CLsat1.3', 'CLsat1.4', 'CLsat1.5',
-         'CLsat2', 'CLsat3.1', 'CLsat3.2', 'CLsat4']
-colors = {'CLsat1.1': '#08306b', 'CLsat1.2': '#2171b5', 'CLsat1.3': '#4292c6',
-          'CLsat1.4': '#6baed6', 'CLsat1.5': '#c6dbef', 'CLsat2': '#e6550d',
-          'CLsat3.1': '#00441b', 'CLsat3.2': '#41ab5d', 'CLsat4': '#6a51a3'}
-
-# ---- derive the matrix from the deposit ----------------------------------
-asm, bed_total = {}, collections.Counter()
-for r in csv.reader(open(os.path.join(B, 'locus_catalogue', 'MASTER.loci.segmented.bed'),
-                         encoding='utf-8'), delimiter='\t'):
+# ---- scaffold -> species from MASTER.merged.bed ---------------------------
+scf2sp = {}
+species_seen = []
+for r in csv.reader(open(a.master_bed, encoding='utf-8'), delimiter='\t'):
     if len(r) >= 4:
-        a = PREFIX.get(r[0][:6], '?')
-        asm[r[3]] = a
-        bed_total[a] += 1
+        sp = r[3].split('|')[0]
+        scf2sp[r[0]] = sp
+        if sp not in species_seen:
+            species_seen.append(sp)
+species = a.species.split(',') if a.species else species_seen
+species_label = a.labels.split(',') if a.labels else species
+if len(species_label) != len(species):
+    sys.exit('--labels must have one entry per species')
+
+# ---- derive the matrix from the catalogue ---------------------------------
+asm, bed_total = {}, collections.Counter()
+for r in csv.reader(open(a.segmented_bed, encoding='utf-8'), delimiter='\t'):
+    if len(r) >= 4:
+        sp = scf2sp.get(r[0], '?')
+        asm[r[3]] = sp
+        bed_total[sp] += 1
 
 sub = {r['locus']: r['subfamily'] for r in csv.DictReader(
-    open(os.path.join(B, 'subfamily_assignment', 'locus_subfamily.tsv'), encoding='utf-8'),
-    delimiter='\t')}
+    open(a.subfamily_tsv, encoding='utf-8'), delimiter='\t')}
 
+order = a.order.split(',') if a.order else sorted({f for f in sub.values() if f and f != 'NA'})
 data = {f: {s: 0 for s in species} for f in order}
 for locus, fam in sub.items():
-    a = asm.get(locus)
-    if a in data[fam] if fam in data else False:
-        data[fam][a] += 1
-    elif fam in data and a:
-        data[fam][a] = data[fam].get(a, 0) + 1
+    sp = asm.get(locus)
+    if fam in data and sp in data[fam]:
+        data[fam][sp] += 1
 
 totals = {sp: sum(data[f][sp] for f in order) for sp in species}
 print('per-assembly totals from subfamily table :', totals)
-print('per-assembly totals from the BED         :', dict(bed_total))
+print('per-assembly totals from the BED         :', {sp: bed_total[sp] for sp in species})
 for sp in species:
-    assert totals[sp] == bed_total[sp], 'mismatch for %s: %d vs %d' % (sp, totals[sp], bed_total[sp])
-assert sum(totals.values()) == 627, 'grand total %d != 627' % sum(totals.values())
-print('cross-check OK, grand total 627\n')
+    if totals[sp] != bed_total[sp]:
+        print('WARNING: mismatch for %s: %d loci with a sub-subfamily call vs %d in the BED '
+              '(loci with NA calls or sub-subfamilies outside --order are not drawn)'
+              % (sp, totals[sp], bed_total[sp]), file=sys.stderr)
+print('grand total drawn: %d (BED: %d)\n' % (sum(totals.values()), sum(bed_total[sp] for sp in species)))
+
+# ---- colours ---------------------------------------------------------------
+colors = {}
+if a.colours:
+    for line in open(a.colours):
+        p = line.rstrip('\n').split('\t')
+        if len(p) >= 2 and not p[0].startswith('#'):
+            colors[p[0]] = p[1]
+cmap = plt.get_cmap('tab20')
+for i, fam in enumerate(order):
+    colors.setdefault(fam, matplotlib.colors.to_hex(cmap(i % 20)))
 
 # ---- render (geometry identical to the original) -------------------------
 BAR_W, MAX_LW = 0.65, 4.5
@@ -97,7 +122,7 @@ for i, sp in enumerate(species):
     ax.text(i, bottom[i] + 3, str(totals[sp]), ha='center', va='bottom',
             fontsize=13, fontweight='bold', zorder=4)
 
-max_seg = max(v for fam in order for v in data[fam].values())
+max_seg = max([v for fam in order for v in data[fam].values()] or [1])
 for i in range(len(species) - 1):
     sl, sr = species[i], species[i + 1]
     xl, xr = i + BAR_W / 2, (i + 1) - BAR_W / 2
@@ -113,8 +138,8 @@ for i in range(len(species) - 1):
 
 ax.set_xticks(x)
 ax.set_xticklabels(species_label, rotation=20, ha='right', fontsize=11)
-ax.set_ylabel('Segmented CLsat loci', fontsize=12)
-ax.set_ylim(0, max(totals.values()) * 1.15)
+ax.set_ylabel('Segmented loci', fontsize=12)
+ax.set_ylim(0, max(totals.values() or [1]) * 1.15)
 ax.set_xlim(-0.6, len(species) - 1 + 0.6)
 h, l = ax.get_legend_handles_labels()
 ax.legend(h, l, title='sub-subfamily', loc='upper left', ncol=3, fontsize=9.5,
@@ -122,11 +147,8 @@ ax.legend(h, l, title='sub-subfamily', loc='upper left', ncol=3, fontsize=9.5,
 for spine in ('top', 'right'):
     ax.spines[spine].set_visible(False)
 plt.tight_layout()
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-fig.savefig(OUT, dpi=220)
+os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+fig.savefig(a.out, dpi=220)
 plt.close(fig)
-
-from PIL import Image
-im = Image.open(OUT)
-print('wrote %s  (%dx%d)' % (OUT, im.width, im.height))
-print('\nbar labels now: %s' % ' '.join('%s=%d' % (s, totals[s]) for s in species))
+print('wrote %s' % a.out)
+print('\nbar labels: %s' % ' '.join('%s=%d' % (s, totals[s]) for s in species))

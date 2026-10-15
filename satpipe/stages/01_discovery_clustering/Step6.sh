@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Step 6 - per-species clustering of the rotated motifs with vsearch.
+#
+# Usage: Step6.sh [input_dir] [output_dir]
+#   input_dir   where the .rot files live                     [default: .]
+#   output_dir  receives one subfolder per .rot input         [default: clusters_by_file]
+# Environment (defaults = published Darevskia run):
+#   CLUSTER_ID  vsearch --id                                  [0.90]
+#   STRAND      vsearch --strand (plus | both)                [plus]
 
-# INPUT_DIR: where your .rot files live
-# OUTPUT_DIR: top-level folder that will receive one subfolder per .rot input
-INPUT_DIR="."
-OUTPUT_DIR="clusters_by_file"
-# clustering identity (tune as needed)
-ID=0.90
+INPUT_DIR="${1:-.}"
+OUTPUT_DIR="${2:-clusters_by_file}"
+ID="${CLUSTER_ID:-0.90}"
+STRAND="${STRAND:-plus}"
 
 mkdir -p "$OUTPUT_DIR"
 shopt -s nullglob
@@ -22,13 +28,13 @@ for infa in "$INPUT_DIR"/*.rot; do
   base_dir="$OUTPUT_DIR/$base"
   mkdir -p "$base_dir"
 
-  echo "=== Clustering '$infa' -> $base_dir (id=$ID) ==="
+  echo "=== Clustering '$infa' -> $base_dir (id=$ID strand=$STRAND) ==="
 
   # run vsearch and ask it to write cluster files with the given prefix inside base_dir.
   # vsearch numbers them cluster_${base}_0, cluster_${base}_1, ... (no zero padding) in
-  # the order clusters were created. Strand defaults to plus; see PIPELINE.md Step 5/6.
+  # the order clusters were created. See PIPELINE.md Step 5/6 for the strand choice.
   rm -f "$base_dir"/cluster_"$base"_* "$base_dir/${base}"_cluster_*.fa
-  vsearch --cluster_fast "$infa" --id "$ID" --clusters "$base_dir/cluster_${base}_" --quiet
+  vsearch --cluster_fast "$infa" --id "$ID" --strand "$STRAND" --clusters "$base_dir/cluster_${base}_" --quiet
 
   # rename to ${base}_cluster_N.fa keeping vsearch's own cluster number + 1, so the name
   # identifies the cluster regardless of lexical file order.

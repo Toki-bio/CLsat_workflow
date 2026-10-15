@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# run_trf_and_split_simple.sh — run TRF, compute repeat coverage, split FASTA
-# Requires: gawk (for asorti)
+# Step 4 - run TRF on the motifs themselves, compute each motif's internal simple-repeat
+# coverage, and split the FASTA into clean / repeat-dominated motifs.
+# Requires: trf, gawk (PROCINFO["sorted_in"])
+#
+# Usage: Step4.sh <input.fasta>
+# Environment (defaults = published Darevskia run):
+#   TRF_PARAMS          TRF parameters "match mismatch delta PM PI minscore maxperiod"  [2 5 7 80 10 50 2000]
+#   SIMPLE_REPEAT_COV   motifs whose internal TRF coverage exceeds this many bp are
+#                       written to .repeats.fas instead of .clean.fas                 [50]
 
 set -euo pipefail
 
@@ -10,14 +17,18 @@ if [[ $# -lt 1 ]]; then
 fi
 
 fa="$1"
+TRF_PARAMS="${TRF_PARAMS:-2 5 7 80 10 50 2000}"
+COV_MAX="${SIMPLE_REPEAT_COV:-50}"
 command -v trf >/dev/null 2>&1 || { echo "Error: trf not in PATH"; exit 1; }
-command -v gawk >/dev/null 2>&1 || { echo "Error: gawk is required (asorti)"; exit 1; }
+command -v gawk >/dev/null 2>&1 || { echo "Error: gawk is required (PROCINFO sorted_in)"; exit 1; }
+[[ "$TRF_PARAMS" =~ ^[0-9]+(\ [0-9]+){6}$ ]] || { echo "Error: TRF_PARAMS must be 7 integers, got '$TRF_PARAMS'"; exit 1; }
 
 # Run TRF. TRF's exit status is not 0 on success in every build (some return the number of
 # sequences processed), so do not let `set -e` abort here; the .dat check below is the real test.
-trf "$fa" 2 5 7 80 10 50 2000 -h || true
-dat="${fa}.2.5.7.80.10.50.2000.dat"
-[[ -f "$dat" ]] || { echo "Error: dat file not found"; exit 1; }
+# shellcheck disable=SC2086
+trf "$fa" $TRF_PARAMS -h || true
+dat="${fa}.${TRF_PARAMS// /.}.dat"
+[[ -f "$dat" ]] || { echo "Error: dat file not found: $dat"; exit 1; }
 
 # Parse TRF .dat -> seq coverage (merge overlaps correctly)
 gawk '
@@ -47,10 +58,10 @@ function flush(    k, cov, cs, ce, si, ei, first) {
 END { flush() }
 ' "$dat" > "${fa}.coverage.txt"
 
-# Split FASTA using coverage threshold 50 bp
+# Split FASTA using the coverage threshold
 # Fresh outputs on every run (the awk below appends).
 rm -f "${fa}.repeats.fas" "${fa}.clean.fas"
-gawk -v covfile="${fa}.coverage.txt" -v repfa="${fa}.repeats.fas" -v cleanfa="${fa}.clean.fas" '
+gawk -v covfile="${fa}.coverage.txt" -v repfa="${fa}.repeats.fas" -v cleanfa="${fa}.clean.fas" -v covmax="$COV_MAX" '
 BEGIN {
   FS="[ \t]+"
   while ((getline line < covfile) > 0) {
@@ -61,7 +72,7 @@ BEGIN {
 {
   if ($0 ~ /^>/) {
     hdr = substr($0,2)
-    mode = (cov[hdr] > 50 ? "rep" : "clean")
+    mode = (cov[hdr] > covmax ? "rep" : "clean")
   }
   if (mode=="rep")   print >> repfa
   if (mode=="clean") print >> cleanfa
@@ -69,5 +80,5 @@ BEGIN {
 ' "$fa"
 
 echo "Created:"
-echo "  ${fa}.clean.fas  (coverage ≤ 50)"
-echo "  ${fa}.repeats.fas (coverage > 50)"
+echo "  ${fa}.clean.fas  (coverage <= ${COV_MAX})"
+echo "  ${fa}.repeats.fas (coverage > ${COV_MAX})"

@@ -1,34 +1,55 @@
 #!/usr/bin/env python3
-"""Rescan each candidate locus with 5 kb of context on both sides.
+"""Rescan each candidate locus with VIEW bp of context on both sides.
 
-The 7 candidates were scanned over their raw TRF interval only. Catalogue loci are
-seed-expanded first (Methods 4.1), walking outward while CLsat similarity holds, so a
+The candidates were scanned over their raw TRF interval only. Catalogue loci are
+seed-expanded first (Methods 4.1), walking outward while similarity holds, so a
 TRF-interval-only scan understates any array that continues past its seed. This scans
-locus +/- 5000 bp (FLANK_VIEW) at the same window/step, and reports the contiguous run
-of windows above the 50-bit satellite floor that contains the locus -- i.e. the extent
-the array would have had under boundary expansion.
+locus +/- VIEW bp at the same window/step, and reports the contiguous run of windows above
+the SAT_BITS satellite floor that contains the locus -- i.e. the extent the array would have
+had under boundary expansion.
 
 Also emits flank-track windows so the viewer shows scanned-and-empty rather than
 unexamined background around these loci.
+
+Usage: candidate_flank5k.py <out_dir> <genomes.tsv> <families.tsv> [--view 5000] [--sat-bits 50]
+  out_dir  holds candidates_summary.json and <family>.doubled.fa from candidate_scan.py
+Tools: ssearch36, samtools on PATH.
 """
+import argparse
 import json
-import os
+import shutil
 import subprocess
+import sys
 
-BASE = '/staging/Sergei/Lacertidae/Darevskia'
-OUT = BASE + '/Satellites/motifs_output/clean/candidates'
-SS = '/staging/conda/envs/bioinfo/bin/ssearch36'
-SAT_BITS = 50.0
-VIEW = 5000
+ap = argparse.ArgumentParser()
+ap.add_argument('out')
+ap.add_argument('genomes')
+ap.add_argument('families')
+ap.add_argument('--view', type=int, default=5000)
+ap.add_argument('--sat-bits', type=float, default=50.0)
+a = ap.parse_args()
 
-GEN = {
-    'unp': BASE + '/unp/GCA_032766555.1_D.uni.pHiFi.1.0_genomic.fna',
-    'val': BASE + '/val/GCA_034642135.1_Dar_val_2.0_genomic.fna',
-    'nai': BASE + '/nai/GCA_034642065.1_Dar_nair_1.0_genomic.fna',
-    'unm': BASE + '/unm/GCA_032766585.1_D.uni.mHiFi.1.0_genomic.fna',
-    'arm': BASE + '/arm/GCA_034641395.1_Dar_arm_1.0_genomic.fna',
-}
-MONO = {'CLsat1': 146, 'CLsat2': 145, 'CLsat3': 146, 'CLsat4': 116}
+SS = shutil.which('ssearch36') or sys.exit('ssearch36 not on PATH')
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
+OUT = a.out
+SAT_BITS = a.sat_bits
+VIEW = a.view
+
+
+def read_tsv(path, min_cols):
+    rows = []
+    for line in open(path):
+        if not line.strip() or line.startswith('#'):
+            continue
+        p = line.rstrip('\n').split('\t')
+        if len(p) < min_cols:
+            sys.exit('%s: need %d columns, got %r' % (path, min_cols, line.strip()))
+        rows.append(p)
+    return rows
+
+
+GEN = {p[0]: p[1] for p in read_tsv(a.genomes, 2)}
+MONO = {p[0]: int(p[1]) for p in read_tsv(a.families, 3)}
 
 data = json.load(open('%s/candidates_summary.json' % OUT))
 summary = data['summary']
@@ -41,8 +62,8 @@ def scaf_len(sp, scaf):
             return int(p[1])
 
 
-def faidx(sp, scaf, a, b):
-    r = subprocess.run(['samtools', 'faidx', GEN[sp], '%s:%d-%d' % (scaf, a, b)],
+def faidx(sp, scaf, x, y):
+    r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, y)],
                        capture_output=True, text=True)
     return ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
 
@@ -69,12 +90,12 @@ flank_rows = []
 print('%-3s %-4s %-11s %-11s  %-9s %-11s %s'
       % ('id', 'asm', 'TRF start', 'TRF end', 'TRF len', 'signal span', 'change'))
 report = {}
-for cid in sorted(summary, key=lambda x: int(x[1:])):
+for cid in sorted(summary, key=lambda c: int(c[1:]) if c[1:].isdigit() else 0):
     s = summary[cid]
     sp, scaf = s['sp'], s['scf']
-    a, b = s['start'] + 1, s['end']
+    x, y = s['start'] + 1, s['end']
     slen = scaf_len(sp, scaf)
-    ra, rb = max(1, a - VIEW), min(slen, b + VIEW)
+    ra, rb = max(1, x - VIEW), min(slen, y + VIEW)
     seq = faidx(sp, scaf, ra, rb)
     fam = s['call']
     m = MONO[fam]
@@ -85,16 +106,16 @@ for cid in sorted(summary, key=lambda x: int(x[1:])):
         gpos = ra + pos                      # 1-based genomic start of window
         bt = bits(seq[pos:pos + win], fam)
         wins.append((gpos, bt))
-        if gpos + win - 1 < a or gpos > b:   # window lies wholly in the flank
+        if gpos + win - 1 < x or gpos > y:   # window lies wholly in the flank
             flank_rows.append((scaf, gpos - 1, bt,
-                               '%s|%s:%d-%d|CANDFLANK' % (sp, scaf, a, b), 'FLANK', sp))
+                               '%s|%s:%d-%d|CANDFLANK' % (sp, scaf, x, y), 'FLANK', sp))
         pos += step
     # contiguous run above the floor that overlaps the TRF interval
     above = [i for i, (g, bt) in enumerate(wins) if bt >= SAT_BITS]
     lo = hi = None
     for i in above:
         g = wins[i][0]
-        if g + win - 1 >= a and g <= b:
+        if g + win - 1 >= x and g <= y:
             lo = i if lo is None else lo
             hi = i
     if lo is not None:
@@ -104,15 +125,15 @@ for cid in sorted(summary, key=lambda x: int(x[1:])):
             hi += 1
         span_a, span_b = wins[lo][0], wins[hi][0] + win - 1
     else:
-        span_a, span_b = a, b
-    grew = (a - span_a) + (span_b - b)
-    report[cid] = dict(trf=[a, b], span=[span_a, span_b],
-                       trf_len=b - a + 1, span_len=span_b - span_a + 1,
-                       left_ext=a - span_a, right_ext=span_b - b,
+        span_a, span_b = x, y
+    grew = (x - span_a) + (span_b - y)
+    report[cid] = dict(trf=[x, y], span=[span_a, span_b],
+                       trf_len=y - x + 1, span_len=span_b - span_a + 1,
+                       left_ext=x - span_a, right_ext=span_b - y,
                        scaffold_len=slen, clipped=(ra == 1 or rb == slen))
     print('%-3s %-4s %11d %11d  %9d %11d %s'
-          % (cid, sp, a, b, b - a + 1, span_b - span_a + 1,
-             ('+%d bp (L+%d R+%d)' % (grew, a - span_a, span_b - b)) if grew else 'unchanged'))
+          % (cid, sp, x, y, y - x + 1, span_b - span_a + 1,
+             ('+%d bp (L+%d R+%d)' % (grew, x - span_a, span_b - y)) if grew else 'unchanged'))
 
 with open('%s/CAND_FLANK.bits.tsv' % OUT, 'w') as f:
     for r in flank_rows:

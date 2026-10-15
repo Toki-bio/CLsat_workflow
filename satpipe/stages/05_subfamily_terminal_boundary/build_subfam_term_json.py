@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
-import json, os
-W = "/staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/CLsat_full_clusters_6genome/flank_analysis"
+"""Build subfamily.json, terminal_monomers.json and terminal_hist.json for the viewer.
+
+Usage: build_subfam_term_json.py <work_dir> <families.tsv>
+  work_dir      holds locus_subfamily.tsv (assign_subfamily.sh) and terminal_monomers.tsv
+                (terminal_monomers.sh); receives the three JSON files
+  families.tsv  family  mono  [consensus.fa]
+Environment: CONFIDENT_DELTA  bits margin over the second-best sub-subfamily for a confident call [10]
+"""
+import collections
+import json
+import os
+import sys
+
+if len(sys.argv) != 3:
+    sys.exit("Usage: build_subfam_term_json.py <work_dir> <families.tsv>")
+W = sys.argv[1]
+CONFIDENT_DELTA = float(os.environ.get("CONFIDENT_DELTA", "10"))
+mono_of = {}
+with open(sys.argv[2]) as f:
+    for line in f:
+        if not line.strip() or line.startswith("#"):
+            continue
+        p = line.rstrip("\n").split("\t")
+        mono_of[p[0]] = int(p[1])
 
 # --- subfamily.json: locus -> {subfamily, pid, bits, second, delta, confident} ---
 subfam = {}
@@ -17,15 +39,15 @@ with open(f"{W}/locus_subfamily.tsv") as f:
             "bits": None if bits == "NA" else float(bits),
             "second": None if second in ("NA","") else second,
             "delta": None if delta == "NA" else float(delta),
-            # confident if margin over 2nd-best >= 10 bits (or no competitor)
-            "confident": (delta == "NA") or (delta != "NA" and float(delta) >= 10),
+            # confident if margin over 2nd-best >= CONFIDENT_DELTA bits (or no competitor)
+            "confident": (delta == "NA") or (delta != "NA" and float(delta) >= CONFIDENT_DELTA),
         }
 with open(f"{W}/subfamily.json","w") as f:
     json.dump(subfam, f, separators=(",",":"))
 print(f"subfamily.json: {len(subfam)} loci, {os.path.getsize(W+'/subfamily.json'):,} bytes")
 
 # --- terminal_monomers.json: locus -> {start:{...}, end:{...}} ---
-# fields per terminus: cons_start, cons_end, covered, frac, partial, pct_id
+# fields per terminus: cons_start, cons_end, covered, frac, partial, pct_id, strand, edge_gap
 term = {}
 with open(f"{W}/terminal_monomers.tsv") as f:
     next(f)
@@ -52,9 +74,8 @@ with open(f"{W}/terminal_monomers.json","w") as f:
     json.dump(term, f, separators=(",",":"))
 print(f"terminal_monomers.json: {len(term)} loci, {os.path.getsize(W+'/terminal_monomers.json'):,} bytes")
 
-# --- aggregate: covered-length histogram per subtype per end, for the viewer chart ---
+# --- aggregate: covered-length histogram per family per end, for the viewer chart ---
 agg = {}
-import collections
 for lid, ends in term.items():
     subt = subfam.get(lid,{}).get("major","?")
     for which in ("start","end"):
@@ -65,9 +86,11 @@ for lid, ends in term.items():
         agg[subt][which][r["covered"]] += 1
 # convert counters to arrays indexed by covered bp (0..mono)
 out = {}
-mono_of = {"CLsat1":146,"CLsat2":145,"CLsat3":146,"CLsat4":116}
 for subt, d in agg.items():
-    m = mono_of.get(subt,146)
+    if subt not in mono_of:
+        print(f"  WARNING: family {subt!r} not in families.tsv; histogram skipped", file=sys.stderr)
+        continue
+    m = mono_of[subt]
     out[subt] = {"mono": m, "start":[0]*(m+2), "end":[0]*(m+2)}
     for which in ("start","end"):
         for cov,n in d.get(which, {}).items():

@@ -1,20 +1,38 @@
 #!/usr/bin/env bash
-# 85 Mb TRF rescan, done properly this time: split into overlapping chunks so TRF doesn't
-# hang on one giant sequence, run each chunk in parallel, then merge back to scaffold
-# coordinates. Overlap only needs to exceed a few CLsat monomers (arrays split across a
-# chunk boundary reappear as two adjacent seeds and get reconnected by the same
-# boundary-expansion pipeline used for everything else) -- no need for enormous overlap.
+# TRF scan of one very long scaffold in overlapping chunks, so TRF does not hang on a giant
+# sequence: extract the scaffold, split it, run TRF per chunk in parallel, translate the chunk
+# coordinates back to scaffold coordinates and de-duplicate calls seen twice in an overlap.
+# Overlap only needs to exceed a few monomers (arrays split across a chunk boundary reappear as
+# two adjacent seeds and get reconnected by the same boundary-expansion pipeline used for
+# everything else) -- no need for enormous overlap. The published run needed this for the
+# 85.83 Mb unp scaffold.
+#
+# Usage: run_chunked.sh <genome.fa> <scaffold_name> <out_dir>
+# Environment (defaults = published run):
+#   CHUNK_BP     chunk length                                  [2000000]
+#   OVERLAP_BP   overlap between consecutive chunks            [50000]
+#   TRF_PARAMS   TRF parameters                                [2 5 7 80 10 50 2000]
+#   JOBS         parallel TRF jobs                             [16]
+# Tools: samtools, trf, parallel, python3 on PATH.
+# Outputs in out_dir: scaf.fa, chunk_coords.tsv, chunks/chunk_N.{fa,dat,err},
+#                     scaf.trf.merged.dat, scaf.trf.dedup.dat (scaffold coordinates), trf_chunked.done
 set -euo pipefail
+[[ $# -eq 3 ]] || { echo "Usage: $0 <genome.fa> <scaffold_name> <out_dir>" >&2; exit 1; }
+GENOME="$1"; SCFNAME="$2"; V="$3"
+CHUNK="${CHUNK_BP:-2000000}"
+OVERLAP="${OVERLAP_BP:-50000}"
+TRF_PARAMS="${TRF_PARAMS:-2 5 7 80 10 50 2000}"
+JOBS="${JOBS:-16}"
+for t in samtools trf parallel python3; do command -v $t >/dev/null || { echo "$t not in PATH" >&2; exit 1; }; done
+[[ "$TRF_PARAMS" =~ ^[0-9]+(\ [0-9]+){6}$ ]] || { echo "TRF_PARAMS must be 7 integers" >&2; exit 1; }
 
-B=/staging/conda/envs/bioinfo/bin
-V=/staging/tmp/clsat_v6/scan85
-SCAF=$V/scaf.fa
-CHUNK=2000000     # 2 Mb chunks
-OVERLAP=50000     # 50 kb overlap (>> any single CLsat monomer, generous margin)
-
+mkdir -p "$V"
 cd "$V"
-LEN=$($B/samtools faidx "$SCAF" 2>/dev/null; awk '{print $2}' "$SCAF.fai")
-echo "scaffold length: $LEN"
+[[ -s "$GENOME.fai" ]] || samtools faidx "$GENOME"
+samtools faidx "$GENOME" "$SCFNAME" > scaf.fa
+samtools faidx scaf.fa
+LEN=$(awk -F'\t' '{print $2}' scaf.fa.fai)
+echo "scaffold $SCFNAME length: $LEN"
 
 mkdir -p chunks
 rm -f chunks/*.fa chunks/*.dat chunks/*.err
@@ -26,7 +44,7 @@ while [ "$start" -le "$LEN" ]; do
   [ "$end" -gt "$LEN" ] && end=$LEN
   n=$((n+1))
   cf="chunks/chunk_${n}.fa"
-  $B/samtools faidx "$SCAF" "JAWDKN010000003.1:${start}-${end}" | \
+  samtools faidx scaf.fa "${SCFNAME}:${start}-${end}" | \
     awk -v nm="chunk_${n}" 'BEGIN{ORS=""} /^>/{print ">"nm"\n"; next} {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' \
     > "$cf"
   printf "%d\t%d\t%d\n" "$n" "$start" "$end" >> chunk_coords.tsv
@@ -41,10 +59,12 @@ echo "=== running TRF on each chunk (parallel) ==="
 run_one() {
   cf="$1"
   base=$(basename "$cf" .fa)
-  /staging/miniconda3/bin/trf "$cf" 2 5 7 80 10 50 2000 -h -ngs > "chunks/${base}.dat" 2> "chunks/${base}.err" || true
+  # shellcheck disable=SC2086
+  trf "$cf" $TRF_PARAMS -h -ngs > "chunks/${base}.dat" 2> "chunks/${base}.err" || true
 }
 export -f run_one
-ls chunks/chunk_*.fa | $B/parallel --jobs 16 run_one {}
+export TRF_PARAMS
+ls chunks/chunk_*.fa | parallel --jobs "$JOBS" run_one {}
 
 echo "=== translate chunk-local coordinates back to scaffold coordinates ==="
 python3 - << 'PYEOF'
@@ -74,4 +94,4 @@ sort -k1,1n -k4,4n scaf.trf.merged.dat | \
   awk '{key=$4"_"$3; if(key!=prevkey || $1-prevend>100){print; prevkey=key} prevend=$2}' \
   > scaf.trf.dedup.dat
 wc -l scaf.trf.merged.dat scaf.trf.dedup.dat
-echo TRF_CHUNKED_DONE > trf85.done
+echo TRF_CHUNKED_DONE > trf_chunked.done

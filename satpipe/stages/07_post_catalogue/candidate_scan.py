@@ -1,44 +1,59 @@
 #!/usr/bin/env python3
-"""Process the 7 CLsat-matching singleton loci that are absent from the catalogue,
-using the same steps the pipeline applies to MASTER loci, so they can be inspected
-in the viewer alongside catalogued loci.
+"""Process candidate loci that are absent from the catalogue (singleton loci with a strong
+family signal), using the same steps the pipeline applies to MASTER loci, so they can be
+inspected in the viewer alongside catalogued loci.
 
 For each candidate:
-  * extract the locus plus 600 bp of flank on each side
-  * four-way sliding-window ssearch36 scan against the CLsat1-4 consensuses
+  * extract the locus plus FLANK bp of flank on each side
+  * sliding-window ssearch36 scan against every family consensus
     (window = 2 monomers, step = 1 monomer, per-family monomer length)
   * per-locus maximum bitscore per family -> family call and competitor
-  * 600 bp flank extraction and classification
-  * sub-subfamily assignment against the doubled sub-subfamily consensuses
+  * flank extraction
 
 These are CANDIDATES for inspection, not catalogue members. They are given C-prefixed
-identifiers and a distinct flag so they can never be confused with the 627/541 set.
+identifiers and a distinct flag so they can never be confused with the catalogue.
+
+Usage: candidate_scan.py <candidates.tsv> <genomes.tsv> <families.tsv> <out_dir> [--flank 600]
+  candidates.tsv  id  species  scaffold  start1  end1   (1-based inclusive; '#' lines ignored)
+  genomes.tsv     species_code  genome.fa (indexed)
+  families.tsv    family  mono  consensus.fa
+Tools: ssearch36, samtools on PATH.
+Outputs in out_dir: candidates_summary.json, CAND_<family>.bits.tsv, <family>.doubled.fa
+Note: flank start/end in candidates_summary.json are 0-based (BED frame), unlike the L-locus
+flanks.json from rebuild_ortho_segmented.py (1-based) -- see docs/files.md.
 """
-import os
-import subprocess
+import argparse
 import json
-import collections
+import os
+import shutil
+import subprocess
+import sys
 
-BASE = '/staging/Sergei/Lacertidae/Darevskia'
-SAT = BASE + '/Satellites'
-OUT = SAT + '/motifs_output/clean/candidates'
-SS = '/staging/conda/envs/bioinfo/bin/ssearch36'
-CONS = SAT + '/CLUSTERS/CLsat/consi_CLsat_original/CLsat_cons.rot'
+ap = argparse.ArgumentParser()
+ap.add_argument('candidates')
+ap.add_argument('genomes')
+ap.add_argument('families')
+ap.add_argument('out')
+ap.add_argument('--flank', type=int, default=600)
+a = ap.parse_args()
 
+SS = shutil.which('ssearch36') or sys.exit('ssearch36 not on PATH')
+SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
+OUT = a.out
+FLANK = a.flank
 os.makedirs(OUT, exist_ok=True)
 
-CAND = [
-    ('C1', 'unp', 'JAWDKN010000111.1', 1046086, 1047540),
-    ('C2', 'val', 'JAWWNG010000434.1', 5035624, 5037236),
-    ('C3', 'nai', 'JAWWNI010000232.1',  487484,  489487),
-    ('C4', 'unm', 'JAWDKO010000033.1', 6419919, 6421922),
-    ('C5', 'val', 'JAWWNG010000434.1', 5030863, 5032532),
-    ('C6', 'val', 'JAWWNG010000953.1',  378254,  380111),
-    ('C7', 'arm', 'JAWWNF010000348.1', 1559350, 1561206),
-]
 
-MONO = {'CLsat1': 146, 'CLsat2': 145, 'CLsat3': 146, 'CLsat4': 116}
-FLANK = 600
+def read_tsv(path, min_cols):
+    rows = []
+    for line in open(path):
+        if not line.strip() or line.startswith('#'):
+            continue
+        p = line.rstrip('\n').split('\t')
+        if len(p) < min_cols:
+            sys.exit('%s: need %d columns, got %r' % (path, min_cols, line.strip()))
+        rows.append(p)
+    return rows
 
 
 def read_fa(path):
@@ -53,7 +68,14 @@ def read_fa(path):
     return {k: ''.join(v).upper() for k, v in seqs.items()}
 
 
-cons = read_fa(CONS)
+CAND = [(p[0], p[1], p[2], int(p[3]), int(p[4])) for p in read_tsv(a.candidates, 5)]
+GEN = {p[0]: p[1] for p in read_tsv(a.genomes, 2)}
+MONO = {}
+cons = {}
+for p in read_tsv(a.families, 3):
+    MONO[p[0]] = int(p[1])
+    cons[p[0]] = ''.join(read_fa(p[2]).values())
+FAMS = list(MONO)
 print('consensuses: %s' % {k: len(v) for k, v in cons.items()})
 
 # doubled subjects, one file per family
@@ -61,21 +83,14 @@ for fam, seq in cons.items():
     with open('%s/%s.doubled.fa' % (OUT, fam), 'w') as f:
         f.write('>%s\n%s\n' % (fam, seq + seq))
 
-# locate genome fasta per assembly
-GEN = {}
-for sp in set(c[1] for c in CAND):
-    hits = [p for p in
-            subprocess.run(['bash', '-lc', 'ls %s/%s/*.fna 2>/dev/null' % (BASE, sp)],
-                           capture_output=True, text=True).stdout.split()
-            if p.endswith('.fna')]
-    assert hits, 'no genome fasta for %s' % sp
-    GEN[sp] = hits[0]
-    print('%-4s %s' % (sp, hits[0]))
+for cid, sp, scaf, x, y in CAND:
+    if sp not in GEN:
+        sys.exit('candidate %s: species %r not in %s' % (cid, sp, a.genomes))
 
 
-def faidx(sp, scaf, a, b):
+def faidx(sp, scaf, x, y):
     """1-based inclusive region"""
-    r = subprocess.run(['samtools', 'faidx', GEN[sp], '%s:%d-%d' % (scaf, a, b)],
+    r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, y)],
                        capture_output=True, text=True)
     return ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
 
@@ -113,12 +128,14 @@ bits_rows = {f: [] for f in MONO}
 summary = {}
 flanks = {}
 
-for cid, sp, scaf, a, b in CAND:
+for cid, sp, scaf, x, y in CAND:
     slen = scaf_len(sp, scaf)
-    seq = faidx(sp, scaf, a, b)
-    print('\n%s  %s %s:%d-%d  len=%d  scaffold=%d' % (cid, sp, scaf, a, b, len(seq), slen))
+    if slen is None:
+        sys.exit('candidate %s: scaffold %s not in %s.fai' % (cid, scaf, GEN[sp]))
+    seq = faidx(sp, scaf, x, y)
+    print('\n%s  %s %s:%d-%d  len=%d  scaffold=%d' % (cid, sp, scaf, x, y, len(seq), slen))
     permax = {}
-    for fam in ('CLsat1', 'CLsat2', 'CLsat3', 'CLsat4'):
+    for fam in FAMS:
         m = MONO[fam]
         win, step = 2 * m, m
         mx = 0.0
@@ -127,27 +144,28 @@ for cid, sp, scaf, a, b in CAND:
         while pos + win <= len(seq):
             sub = seq[pos:pos + win]
             bt = best_bits(sub, fam)
-            bits_rows[fam].append((scaf, a + pos, bt,
-                                   '%s|%s:%d-%d|CAND' % (sp, scaf, a, b), fam, sp))
+            bits_rows[fam].append((scaf, x + pos, bt,
+                                   '%s|%s:%d-%d|CAND' % (sp, scaf, x, y), fam, sp))
             mx = max(mx, bt)
             n += 1
             pos += step
         permax[fam] = mx
         print('   %-7s windows=%-3d max=%.1f' % (fam, n, mx))
     order = sorted(permax.items(), key=lambda kv: -kv[1])
-    summary[cid] = dict(sp=sp, scf=scaf, start=a - 1, end=b, len=len(seq),
+    comp = order[1] if len(order) > 1 else (None, 0.0)
+    summary[cid] = dict(sp=sp, scf=scaf, start=x - 1, end=y, len=len(seq),
                         bits=permax, call=order[0][0], call_bits=order[0][1],
-                        comp=order[1][0], comp_bits=order[1][1],
-                        delta=round(order[0][1] - order[1][1], 1))
-    # flanks
-    lf_a, lf_b = max(1, a - FLANK), a - 1
-    rf_a, rf_b = b + 1, min(slen, b + FLANK)
+                        comp=comp[0], comp_bits=comp[1],
+                        delta=round(order[0][1] - comp[1], 1))
+    # flanks (0-based start in the JSON)
+    lf_a, lf_b = max(1, x - FLANK), x - 1
+    rf_a, rf_b = y + 1, min(slen, y + FLANK)
     lf = faidx(sp, scaf, lf_a, lf_b) if lf_b >= lf_a else ''
     rf = faidx(sp, scaf, rf_a, rf_b) if rf_b >= rf_a else ''
     flanks[cid] = dict(LF=dict(start=lf_a - 1, end=lf_b, len=len(lf), seq=lf,
-                               truncated=(a - FLANK) < 1),
+                               truncated=(x - FLANK) < 1),
                        RF=dict(start=rf_a - 1, end=rf_b, len=len(rf), seq=rf,
-                               truncated=(b + FLANK) > slen))
+                               truncated=(y + FLANK) > slen))
 
 with open('%s/candidates_summary.json' % OUT, 'w') as f:
     json.dump(dict(summary=summary, flanks=flanks), f, indent=1)
