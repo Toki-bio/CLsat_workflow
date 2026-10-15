@@ -27,8 +27,11 @@ manual_loci: ../ref/darevskia/manual_loci.bed
 expansion: {jobs: 32}
 
 finalisation:
-  # only the 85.83 Mb unp scaffold JAWDKN010000003.1 exceeded TRF's practical limit in the published run
+  # only the 85.83 Mb unp scaffold JAWDKN010000003.1 exceeded TRF's practical limit in the published run;
+  # its chunk 44 (the last 2 Mb, ending in a ~57 kb telomeric tail) never finishes: bisected with a timeout
   large_scaffold_bp: 80000000
+  trf_timeout: 900
+  min_piece_bp: 20000
 
 subfamily:
   members:

@@ -366,6 +366,7 @@ def st_large(ctx: Ctx):
     for code, scf, ln in rows:
         d = ctx.d('large', code, scf)
         env = ctx.env(CHUNK_BP=fin['chunk_bp'], OVERLAP_BP=fin['overlap_bp'], TRF_PARAMS=disc['trf'],
+                      TRF_TIMEOUT=fin['trf_timeout'], MIN_PIECE_BP=fin['min_piece_bp'],
                       JOBS=ctx.cfg.data['expansion']['jobs'])
         ctx.sh(['bash', os.path.join(ctx.scripts, '06_catalogue_finalize/85mb_recovery/run_chunked.sh'),
                 ctx.cfg.genomes[code], scf, d], '02b_large', env=env, log_name='02b_large_%s_%s' % (code, scf))
@@ -379,6 +380,12 @@ def st_large(ctx: Ctx):
             s, e, fam = int(p[0]), int(p[1]), p[4]
             seeds_extra[fam].append('%s\t%d\t%d\t%s|%s:%d-%d|RECOVERED\t0\t.\n' % (scf, s - 1, e, code, scf, s, e))
         outs.append(cand)
+        uns = os.path.join(d, 'unscanned.tsv')
+        if os.path.isfile(uns) and os.path.getsize(uns):
+            ctx.manifest.setdefault('unscanned', []).extend(
+                {'code': code, 'scaffold': scf, 'piece': p[0], 'start': int(p[1]), 'end': int(p[2]), 'note': p[4] if len(p) > 4 else ''}
+                for p in read_tsv(uns, 3))
+            ctx.say('  %s %s: %d piece(s) TRF could not finish (listed in %s)' % (code, scf, sum(1 for _ in read_tsv(uns, 3)), uns))
     for fam, lines in seeds_extra.items():
         p = os.path.join(ctx.d('large'), fam + '.recovered.bed')
         with open(p, 'w') as f:

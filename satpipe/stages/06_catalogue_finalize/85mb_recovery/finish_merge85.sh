@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# Re-merge the per-chunk TRF outputs of run_chunked.sh into scaffold coordinates after any
-# chunk .dat has been replaced by hand (the published run rebuilt chunk_44 from a bisection
-# cascade; see legacy/published_run/85mb_recovery/).
+# Re-merge the per-piece TRF outputs of run_chunked.sh into scaffold coordinates after any
+# piece .dat has been replaced by hand (the published run rebuilt chunk_44 from a bisection
+# cascade; see legacy/published_run/85mb_recovery/). Pieces are listed in piece_coords.tsv.
 #
 # Usage: finish_merge85.sh <out_dir>     (the run_chunked.sh output directory)
 set -euo pipefail
 [[ $# -eq 1 ]] || { echo "Usage: $0 <out_dir>" >&2; exit 1; }
 cd "$1"
-[[ -s chunk_coords.tsv ]] || { echo "chunk_coords.tsv missing in $1" >&2; exit 1; }
+[[ -s piece_coords.tsv ]] || { echo "piece_coords.tsv missing in $1" >&2; exit 1; }
 
-echo "=== translate chunk-local coordinates back to scaffold coordinates ==="
+echo "=== translate piece-local coordinates back to scaffold coordinates ==="
 python3 - << 'PYEOF'
-import glob, re
+import glob, os
 coords = {}
-for line in open('chunk_coords.tsv'):
+for line in open('piece_coords.tsv'):
     n, s, e = line.split()
-    coords[int(n)] = int(s)
-
+    coords[n] = int(s)
 out = open('scaf.trf.merged.dat', 'w')
-for f in sorted(glob.glob('chunks/chunk_*.dat'), key=lambda x: int(re.search(r'chunk_(\d+)', x).group(1))):
-    n = int(re.search(r'chunk_(\d+)', f).group(1))
+for f in sorted(glob.glob('chunks/*.dat'), key=lambda x: coords.get(os.path.basename(x)[:-4], 0)):
+    n = os.path.basename(f)[:-4]
     offset = coords[n] - 1
     for line in open(f):
         parts = line.split()

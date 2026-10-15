@@ -147,6 +147,12 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                                    "(the published run needed this for one 85.8 Mb unp scaffold)."),
         "chunk_bp": F("int", default=2000000, min=1, doc="Chunk size for the chunked TRF scan."),
         "overlap_bp": F("int", default=50000, min=0, doc="Chunk overlap for the chunked TRF scan."),
+        "trf_timeout": F("int", default=1800, min=60,
+                         doc="Seconds after which a chunk's TRF run is stopped and the chunk bisected (the published "
+                             "run's chunk 44 of the 85 Mb scaffold never finished: a telomeric tail)."),
+        "min_piece_bp": F("int", default=20000, min=1000,
+                          doc="Pieces shorter than this are no longer bisected; if TRF still times out on them they "
+                              "are listed in unscanned.tsv and left out (never imputed)."),
         "edge_tol": F("int", default=50, min=0, doc="EDGE_TOL used by edge refinement."),
         "rearbitrate": F("bool", default=True, doc="Re-run stage 14 on the finalised catalogue."),
     }),

@@ -76,8 +76,14 @@ Owner decisions already taken, do not reopen: `SEG_SHORT=drop` is the published 
     downloaded, TRF regenerated per scaffold (same TRF version), 85.8 Mb unp scaffold handled by stage 02b.
     Not available there: `subx/` (sub-subfamily consensuses, DRAGEN only) and `CLsat_cons.rot` (derived instead).
     Result: see "Regression result" below once the run has finished.
-  - Molly test (`tests/molly/run_molly.sh`): three families from the revision session's pooled Step-8 families,
-    both 2021 haplotype assemblies, curated table derived from the clusters holding the references.
+  - **Step 9 done — molly test** (`tests/molly/run_molly.sh`): three families from the revision session's pooled
+    Step-8 families (MolSat1 185 bp / 29 units, MolSat2 238 bp / 4, MolSat3 252 bp / 3), both 2021 haplotype
+    assemblies (lat, mex), TRF output reused, curated table = the clusters holding the references. End to end in
+    ~25 min at 16 jobs: 87 centroids; seeds 29/4/3; 34 MASTER = 34 segmented loci (28 MolSat1, 3, 3; all
+    UNIQUE_SEED_WITH_COMPETITOR); 9 anchorable loci, 0 ortholog pairs; viewer assembled and verified in headless
+    Chrome (3 families, 2 assemblies, lists 9/0/34, no script errors). `cross/cluster_report.tsv` shows what the
+    curator step is for: cluster 1 (4 mex members, 252 bp, 99.2 % identical to MolSat3) is a second MolSat3
+    cluster left unassigned by the automatic table.
 
 ## The pipeline as it is
 

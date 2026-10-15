@@ -7,23 +7,33 @@
 # everything else) -- no need for enormous overlap. The published run needed this for the
 # 85.83 Mb unp scaffold.
 #
+# A chunk on which TRF does not finish within TRF_TIMEOUT is bisected (two halves overlapping by
+# OVERLAP_BP) and each half is scanned again, recursively, until the pieces finish or are shorter
+# than MIN_PIECE_BP; pieces that still time out are written to unscanned.tsv and left out, never
+# imputed. This generalises the bisection cascade of the published run, whose one pathological
+# chunk ended at a ~57 kb telomeric (TTAGGG)n tail that TRF never terminates on.
+#
 # Usage: run_chunked.sh <genome.fa> <scaffold_name> <out_dir>
 # Environment (defaults = published run):
-#   CHUNK_BP     chunk length                                  [2000000]
-#   OVERLAP_BP   overlap between consecutive chunks            [50000]
-#   TRF_PARAMS   TRF parameters                                [2 5 7 80 10 50 2000]
-#   JOBS         parallel TRF jobs                             [16]
-# Tools: samtools, trf, parallel, python3 on PATH.
-# Outputs in out_dir: scaf.fa, chunk_coords.tsv, chunks/chunk_N.{fa,dat,err},
-#                     scaf.trf.merged.dat, scaf.trf.dedup.dat (scaffold coordinates), trf_chunked.done
+#   CHUNK_BP      chunk length                                   [2000000]
+#   OVERLAP_BP    overlap between consecutive chunks / halves    [50000]
+#   TRF_PARAMS    TRF parameters                                 [2 5 7 80 10 50 2000]
+#   TRF_TIMEOUT   seconds before a piece is bisected             [1800]
+#   MIN_PIECE_BP  smallest piece still bisected                  [20000]
+#   JOBS          parallel TRF jobs                              [16]
+# Tools: samtools, trf, parallel, python3, timeout (coreutils) on PATH.
+# Outputs in out_dir: scaf.fa, piece_coords.tsv (name start end, 1-based), chunks/<name>.{fa,dat,err},
+#                     unscanned.tsv, scaf.trf.merged.dat, scaf.trf.dedup.dat (scaffold coordinates), trf_chunked.done
 set -euo pipefail
 [[ $# -eq 3 ]] || { echo "Usage: $0 <genome.fa> <scaffold_name> <out_dir>" >&2; exit 1; }
 GENOME="$1"; SCFNAME="$2"; V="$3"
 CHUNK="${CHUNK_BP:-2000000}"
 OVERLAP="${OVERLAP_BP:-50000}"
 TRF_PARAMS="${TRF_PARAMS:-2 5 7 80 10 50 2000}"
+TRF_TIMEOUT="${TRF_TIMEOUT:-1800}"
+MIN_PIECE="${MIN_PIECE_BP:-20000}"
 JOBS="${JOBS:-16}"
-for t in samtools trf parallel python3; do command -v $t >/dev/null || { echo "$t not in PATH" >&2; exit 1; }; done
+for t in samtools trf parallel python3 timeout; do command -v $t >/dev/null || { echo "$t not in PATH" >&2; exit 1; }; done
 [[ "$TRF_PARAMS" =~ ^[0-9]+(\ [0-9]+){6}$ ]] || { echo "TRF_PARAMS must be 7 integers" >&2; exit 1; }
 
 mkdir -p "$V"
@@ -35,19 +45,24 @@ LEN=$(awk -F'\t' '{print $2}' scaf.fa.fai)
 echo "scaffold $SCFNAME length: $LEN"
 
 mkdir -p chunks
-rm -f chunks/*.fa chunks/*.dat chunks/*.err
-: > chunk_coords.tsv
-start=1
-n=0
+rm -f chunks/*.fa chunks/*.dat chunks/*.err chunks/*.timeout
+: > piece_coords.tsv
+: > unscanned.tsv
+
+# extract_piece <name> <start1> <end1>  -> chunks/<name>.fa, records piece_coords.tsv
+extract_piece(){
+  samtools faidx scaf.fa "${SCFNAME}:$2-$3" | \
+    awk -v nm="$1" 'BEGIN{ORS=""} /^>/{print ">"nm"\n"; next} {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' \
+    > "chunks/$1.fa"
+  printf "%s\t%d\t%d\n" "$1" "$2" "$3" >> piece_coords.tsv
+}
+
+start=1; n=0
 while [ "$start" -le "$LEN" ]; do
   end=$(( start + CHUNK - 1 ))
   [ "$end" -gt "$LEN" ] && end=$LEN
   n=$((n+1))
-  cf="chunks/chunk_${n}.fa"
-  samtools faidx scaf.fa "${SCFNAME}:${start}-${end}" | \
-    awk -v nm="chunk_${n}" 'BEGIN{ORS=""} /^>/{print ">"nm"\n"; next} {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' \
-    > "$cf"
-  printf "%d\t%d\t%d\n" "$n" "$start" "$end" >> chunk_coords.tsv
+  extract_piece "chunk_${n}" "$start" "$end"
   nextstart=$(( end - OVERLAP + 1 ))
   [ "$nextstart" -le "$start" ] && nextstart=$(( start + 1 ))
   start=$nextstart
@@ -55,38 +70,75 @@ while [ "$start" -le "$LEN" ]; do
 done
 echo "chunks created: $n"
 
-echo "=== running TRF on each chunk (parallel) ==="
+# run_one <chunks/name.fa>: TRF with a timeout; a timed-out piece leaves <name>.timeout
 run_one() {
   cf="$1"
   base=$(basename "$cf" .fa)
-  # shellcheck disable=SC2086
-  trf "$cf" $TRF_PARAMS -h -ngs > "chunks/${base}.dat" 2> "chunks/${base}.err" || true
+  rm -f "chunks/${base}.dat" "chunks/${base}.timeout"
+  timeout "$TRF_TIMEOUT" trf "$cf" $TRF_PARAMS -h -ngs > "chunks/${base}.dat" 2> "chunks/${base}.err"
+  rc=$?
+  if [ "$rc" -eq 124 ]; then rm -f "chunks/${base}.dat"; touch "chunks/${base}.timeout"; fi
+  return 0
 }
 export -f run_one
-export TRF_PARAMS
-ls chunks/chunk_*.fa | parallel --jobs "$JOBS" run_one {}
+export TRF_PARAMS TRF_TIMEOUT
 
-echo "=== translate chunk-local coordinates back to scaffold coordinates ==="
+# scan a list of pieces in parallel; bisect the ones that time out; repeat until none is left
+scan_list(){ # scan_list <file with one chunks/name.fa per line>
+  parallel --jobs "$JOBS" run_one {} < "$1"
+}
+level=0
+ls chunks/chunk_*.fa > pieces.level0.txt
+echo "=== running TRF on each chunk (parallel, timeout ${TRF_TIMEOUT}s) ==="
+scan_list pieces.level0.txt
+while :; do
+  next="pieces.level$((level+1)).txt"; : > "$next"
+  for t in chunks/*.timeout; do
+    [ -e "$t" ] || continue
+    name=$(basename "$t" .timeout)
+    read -r _ s e < <(awk -v n="$name" -F'\t' '$1==n{print; exit}' piece_coords.tsv)
+    plen=$(( e - s + 1 ))
+    rm -f "$t"
+    if [ "$plen" -le "$MIN_PIECE" ]; then
+      printf "%s\t%d\t%d\t%d\tTRF did not finish within %ss on a %d bp piece\n" "$name" "$s" "$e" "$plen" "$TRF_TIMEOUT" "$plen" >> unscanned.tsv
+      echo "  UNSCANNED: $name ${SCFNAME}:$s-$e ($plen bp)"
+      continue
+    fi
+    mid=$(( s + plen / 2 ))
+    a_e=$(( mid + OVERLAP / 2 )); [ "$a_e" -gt "$e" ] && a_e=$e
+    b_s=$(( mid - OVERLAP / 2 )); [ "$b_s" -lt "$s" ] && b_s=$s
+    extract_piece "${name}a" "$s" "$a_e"; echo "chunks/${name}a.fa" >> "$next"
+    extract_piece "${name}b" "$b_s" "$e"; echo "chunks/${name}b.fa" >> "$next"
+    echo "  bisected $name (${plen} bp) -> ${name}a ${s}-${a_e}, ${name}b ${b_s}-${e}"
+  done
+  [ -s "$next" ] || break
+  level=$((level+1))
+  echo "=== level $level: $(wc -l < "$next") pieces ==="
+  scan_list "$next"
+  [ "$level" -lt 40 ] || { echo "bisection did not converge" >&2; exit 1; }
+done
+
+echo "=== translate piece-local coordinates back to scaffold coordinates ==="
 python3 - << 'PYEOF'
-import glob, re
+import glob, os
 coords = {}
-for line in open('chunk_coords.tsv'):
+for line in open('piece_coords.tsv'):
     n, s, e = line.split()
-    coords[int(n)] = int(s)
-
+    coords[n] = int(s)
 out = open('scaf.trf.merged.dat', 'w')
-for f in sorted(glob.glob('chunks/chunk_*.dat'), key=lambda x: int(re.search(r'chunk_(\d+)', x).group(1))):
-    n = int(re.search(r'chunk_(\d+)', f).group(1))
-    offset = coords[n] - 1   # chunk pos 1 == scaffold pos coords[n]
+n_rows = 0
+for f in sorted(glob.glob('chunks/*.dat'), key=lambda x: coords.get(os.path.basename(x)[:-4], 0)):
+    n = os.path.basename(f)[:-4]
+    offset = coords[n] - 1   # piece pos 1 == scaffold pos coords[n]
     for line in open(f):
         parts = line.split()
         if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
             s, e = int(parts[0]), int(parts[1])
             parts[0] = str(s + offset)
             parts[1] = str(e + offset)
-            out.write(' '.join(parts) + '\n')
+            out.write(' '.join(parts) + '\n'); n_rows += 1
 out.close()
-print('wrote scaf.trf.merged.dat')
+print('wrote scaf.trf.merged.dat: %d rows from %d pieces' % (n_rows, len(glob.glob('chunks/*.dat'))))
 PYEOF
 
 echo "=== dedupe overlapping calls (same period/copies within a few bp = same repeat seen twice) ==="
@@ -94,4 +146,5 @@ sort -k1,1n -k4,4n scaf.trf.merged.dat | \
   awk '{key=$4"_"$3; if(key!=prevkey || $1-prevend>100){print; prevkey=key} prevend=$2}' \
   > scaf.trf.dedup.dat
 wc -l scaf.trf.merged.dat scaf.trf.dedup.dat
+if [ -s unscanned.tsv ]; then echo "unscanned pieces (see unscanned.tsv): $(wc -l < unscanned.tsv)"; fi
 echo TRF_CHUNKED_DONE > trf_chunked.done

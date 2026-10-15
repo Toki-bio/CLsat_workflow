@@ -55,6 +55,8 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `finalisation.large_scaffold_bp` | int |  | `50000000` | Scaffolds longer than this are TRF-scanned in overlapping chunks (the published run needed this for one 85.8 Mb unp scaffold). |
 | `finalisation.chunk_bp` | int |  | `2000000` | Chunk size for the chunked TRF scan. |
 | `finalisation.overlap_bp` | int |  | `50000` | Chunk overlap for the chunked TRF scan. |
+| `finalisation.trf_timeout` | int |  | `1800` | Seconds after which a chunk's TRF run is stopped and the chunk bisected (the published run's chunk 44 of the 85 Mb scaffold never finished: a telomeric tail). |
+| `finalisation.min_piece_bp` | int |  | `20000` | Pieces shorter than this are no longer bisected; if TRF still times out on them they are listed in unscanned.tsv and left out (never imputed). |
 | `finalisation.edge_tol` | int |  | `50` | EDGE_TOL used by edge refinement. |
 | `finalisation.rearbitrate` | bool |  | `True` | Re-run stage 14 on the finalised catalogue. |
 | `manual_loci` | path |  |  | Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are tagged MANUAL in provenance and listed in the manifest. |
