@@ -25,5 +25,6 @@ jobs:
         run: |
           pip install -e .
           ln -sf "$(command -v gawk)" "$CONDA_PREFIX/bin/awk"
+          # both scripts must build the toy project with the same seed (default 7)
           bash tests/toy/run_toy_equivalence.sh . /tmp/toy_eq 4d70b56
-          SEED=23 bash tests/toy/run_driver_toy.sh . /tmp/toy_drv /tmp/toy_eq
+          bash tests/toy/run_driver_toy.sh . /tmp/toy_drv /tmp/toy_eq
