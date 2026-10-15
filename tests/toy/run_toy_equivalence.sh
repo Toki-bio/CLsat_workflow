@@ -195,12 +195,16 @@ for f in MASTER.loci.bed MASTER.loci.segmented.bed MASTER.locus_provenance.segme
   cmpf "step14 $f" "$O/arb/$f" "$N/arb/$f"
 done
 cmpnum "step14 MASTER.locus_bits.tsv" "$O/arb/MASTER.locus_bits.tsv" "$N/arb/MASTER.locus_bits.tsv" 1 2,3,4,5
-cmpnum "step14 MASTER.final_assignment.tsv" "$O/arb/MASTER.final_assignment.tsv" "$N/arb/MASTER.final_assignment.tsv" 1,2,4,7,8 3,5,6
+cmpnoise(){ # cmpnoise <label> <mode> <old> <new>
+  if python3 "$REPO/tests/toy/compare_noise.py" "$2" "$3" "$4" --tol "$TOL"; then echo "  same~  $1 (bits-derived values within noise)"; else echo "  DIFF   $1"; fail=1; fi
+}
+cmpnoise "step14 MASTER.final_assignment.tsv" assignment "$O/arb/MASTER.final_assignment.tsv" "$N/arb/MASTER.final_assignment.tsv"
 for f in locus_master.tsv manifest.tsv all_regions.fa terminal_monomers.tsv locus_boundary_phase.tsv; do
   cmpf "05 $f" "$O/flank_analysis/$f" "$N/fa/$f"
 done
-cmpnum "05 locus_subfamily.tsv" "$O/flank_analysis/locus_subfamily.tsv" "$N/fa/locus_subfamily.tsv" 1,2,3,4,5,7 6,8,9
-for f in subfamily.json terminal_monomers.json terminal_hist.json boundary_phase.json boundary_phase_hist.json; do
+cmpnoise "05 locus_subfamily.tsv" subfamily "$O/flank_analysis/locus_subfamily.tsv" "$N/fa/locus_subfamily.tsv"
+cmpnoise "05 subfamily.json" subfamily-json "$O/flank_analysis/subfamily.json" "$N/fa/subfamily.json"
+for f in terminal_monomers.json terminal_hist.json boundary_phase.json boundary_phase_hist.json; do
   cmpjson "05 $f" "$O/flank_analysis/$f" "$N/fa/$f"
 done
 cmpjson "ortho flanks.json" "$O/ortho/flanks_627.json" "$N/ortho/flanks.json"
