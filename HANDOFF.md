@@ -151,6 +151,16 @@ Decisions the owner must make before or during the refactor:
 - [ ] Tool name and licence (none declared today; README says "academic and research use").
 - [ ] Driver: plain Python stage runner vs Snakemake.
 - [ ] Whether the viewer stays a single file or splits into `index.html` + `viewer.js` + `viewer_config.json` (single file is a feature for deployment; a separate config is needed either way).
-- [ ] Second test organism for the generic run.
+- [x] Second test organism — **decided 2026-10-15 by the owner: the Amazon molly, *Poecilia formosa*.** The
+  CLsat-revision session already ran TRF (`2 5 7 80 10 50 2000 -h`) and workflow Steps 3-8 on the two 2021
+  parental-haplotype assemblies, GCA_013036135.2 (*P. latipinna*-derived half, 976 sequences, 674.6 Mb) and
+  GCA_013036085.2 (*P. mexicana*-derived half, 1,796 sequences, 745.3 Mb): 406 + 630 motifs, 206 + 355 clean,
+  99 + 134 per-half clusters, 45 pooled families with >= 3 units; a recurrent ~186 bp unit in both halves. Data:
+  `therioserver:/home/toki/clsat_revision/molly_trf/` (`split/<acc>/*.dat`, `all_trf.tsv`, `wf37/`, `wf37/step8/`);
+  family alignments in Toki-bio/CLsat-viewer `molly/alignments/` (commit 4d8ed45). Caveat: those assemblies are
+  PacBio CLR. For the satpipe test the molly config needs: the two halves as two "genomes" (codes e.g. `lat`,
+  `mex`), the existing `.dat` files as `inputs.trf_dat`, one or more families chosen from the 45 (consensus +
+  `mono` from the pooled Step-7 alignment; the ~186 bp family is the obvious first), and a curated
+  `family_assignment` table written after inspecting the Step-8 centroids, exactly as for Darevskia.
 - [ ] What to do with L186 in the manuscript (seed family retained; contradiction flagged).
 - [ ] Whether `molly/` becomes its own repository now or after submission.
