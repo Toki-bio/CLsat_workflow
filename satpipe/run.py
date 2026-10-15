@@ -826,6 +826,59 @@ def st_orthology(ctx: Ctx):
 st_orthology.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', 'locus_master.tsv')], {'orthology': ctx.cfg.data['orthology']})
 
 
+@stage('20_candidates', needs=('ssearch36', 'samtools', 'bedtools'))
+def st_candidates(ctx: Ctx):
+    """Post-catalogue singleton screen (manuscript Methods 3.1): every singleton per-species
+    cluster is scored against the family references; hits above the floor that lie outside the
+    catalogue become inspection candidates C1.. (scanned, flanked, optionally sub-subfamily-
+    assigned) for the viewer. Skipped when discovery did not run here (seeds given)."""
+    cb = os.path.join(ctx.run, 'motifs', 'clean', 'clusters_by_file')
+    out = ctx.d('candidates')
+    if not os.path.isdir(cb):
+        ctx.say('  no per-species clusters in this run (seeds were given): no singleton screen')
+        return []
+    cat_bed = os.path.join(ctx.run, 'catalogue', 'MASTER.merged.bed')
+    env = ctx.env(MIN_BITS=ctx.cfg.data['expansion']['min_bits'])
+    ctx.sh(['bash', os.path.join(ctx.scripts, '07_post_catalogue/singleton_screen.sh'), cb,
+            os.path.join(ctx.run, 'tables', 'refs.rot'), out, cat_bed], '20_candidates', env=env)
+    # candidates.tsv: id species scaffold start1 end1, ordered by best bits (descending)
+    best = {}
+    for p in read_tsv(os.path.join(out, 'sing_best.tsv'), 3):
+        best[p[0]] = float(p[2])
+    absent = [l.strip() for l in open(os.path.join(out, 'candidates_absent.txt')) if l.strip()] \
+        if os.path.isfile(os.path.join(out, 'candidates_absent.txt')) else []
+    absent.sort(key=lambda h: (-best.get(h, 0.0), h))
+    ctab = os.path.join(out, 'candidates.tsv')
+    with open(ctab, 'w') as f:
+        for i, h in enumerate(absent, 1):
+            sp, reg = h.split('|')[0], h.split('|')[1]
+            scf, coords = reg.rsplit(':', 1)
+            s, e = coords.split('-')
+            f.write('C%d\t%s\t%s\t%s\t%s\n' % (i, sp, scf, s, e))
+    ctx.manifest['candidates'] = len(absent)
+    ctx.say('  singleton loci above the floor and outside the catalogue: %d' % len(absent))
+    if not absent:
+        return [ctab]
+    tables = os.path.join(ctx.run, 'tables')
+    ctx.sh(['python3', os.path.join(ctx.scripts, '07_post_catalogue/candidate_scan.py'), ctab,
+            os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'), out,
+            '--flank', ctx.cfg.data['orthology']['flank_bp']], '20_candidates')
+    ctx.sh(['python3', os.path.join(ctx.scripts, '07_post_catalogue/candidate_flank5k.py'), out,
+            os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'),
+            '--sat-bits', ctx.cfg.data['expansion']['min_bits']], '20_candidates')
+    sub = ctx.cfg.data.get('subfamily') or {}
+    if sub.get('consensuses') and os.path.isdir(sub['consensuses']) and sub.get('members'):
+        ctx.sh(['python3', os.path.join(ctx.scripts, '07_post_catalogue/candidate_subsubfamily.py'), out,
+                os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'), sub['consensuses'],
+                os.path.join(tables, 'members.tsv'), '--already-doubled',
+                '--confident-delta', sub.get('confident_delta', 10)], '20_candidates')
+    return [ctab, os.path.join(out, 'candidates_summary.json')]
+
+
+st_candidates.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', 'MASTER.merged.bed'), os.path.join(ctx.run, 'tables', 'refs.rot')],
+                                  {'min_bits': ctx.cfg.data['expansion']['min_bits'], 'flank': ctx.cfg.data['orthology']['flank_bp']})
+
+
 # ----------------------------------------------------------------------------- driver
 
 def stage_ids() -> list:

@@ -133,6 +133,14 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                         p = line.rstrip('\n').split('\t')
                         if len(p) >= 3:
                             fo.write('%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], fam))
+            cf = os.path.join(run_dir, 'candidates', 'CAND_FLANK.bits.tsv')
+            if cand and os.path.isfile(cf):
+                # candidate_flank5k.py scans each candidate's flanks with its called family;
+                # rows: scaffold pos0 bits "sp|scf:start1-end|CANDFLANK" FLANK sp
+                call_of = {'%s|%s:%d-%d' % (s['sp'], s['scf'], s['start'] + 1, s['end']): s['call'] for s in cand['summary'].values()}
+                for p in read_tsv(cf, 4):
+                    fam0 = call_of.get(p[3].rsplit('|', 1)[0], fams[0])
+                    fo.write('%s\t%d\t%s\t%s\n' % (p[0], int(p[1]) + 1, p[2], fam0))
         _gzip(tmp, tmp + '.gz')
         os.remove(tmp)
 
