@@ -30,7 +30,7 @@ TOOLS = [
          (4,)),
     Tool("python3", ("--version",), r"Python (\d+\.\d+\.\d+)", True, "driver, 14, orthology, subfamily",
          "python >= 3.10", (3, 10)),
-    Tool("trf", (), r"Version (\d+\.\d+\.\d+[\w.-]*)", True, "02, 04, finalisation",
+    Tool("trf", ("-v",), r"Version (\d+\.\d+\.\d+[\w.-]*)", True, "02, 04, finalisation",
          "exit status is not 0 on success in every build; scripts use `|| true`"),
     Tool("vsearch", ("--version",), r"vsearch v?(\d+\.\d+\.\d+)", True, "06, 08"),
     Tool("mafft", ("--version",), r"v(\d+\.\d+)", True, "07"),
