@@ -1,0 +1,102 @@
+{
+ "title": "CLsat loci in Darevskia genomes",
+ "run_name": "darevskia_clsat (published catalogue, 627 + C1-C7)",
+ "families": [
+  {
+   "name": "CLsat1",
+   "mono": 146,
+   "colour": "#60a5fa"
+  },
+  {
+   "name": "CLsat2",
+   "mono": 145,
+   "colour": "#34d399"
+  },
+  {
+   "name": "CLsat3",
+   "mono": 146,
+   "colour": "#f472b6"
+  },
+  {
+   "name": "CLsat4",
+   "mono": 116,
+   "colour": "#fbbf24"
+  }
+ ],
+ "species": [
+  {
+   "code": "mix",
+   "label": "D. mixta"
+  },
+  {
+   "code": "arm",
+   "label": "D. armeniaca"
+  },
+  {
+   "code": "val",
+   "label": "D. valentini"
+  },
+  {
+   "code": "unp",
+   "label": "D. unisexualis haplotype p (unp)"
+  },
+  {
+   "code": "unm",
+   "label": "D. unisexualis haplotype m (unm)"
+  },
+  {
+   "code": "nai",
+   "label": "D. nairensis (GCA_034642065.1, strain 215)"
+  }
+ ],
+ "subfamilies": {
+  "CLsat1.1": {
+   "family": "CLsat1",
+   "seq": "AAAGAAGCTAGTTGGGATGTATTTGGCTTTTCTAACGTTCAGTTTGGCTTACTTGCGTGATTTTGCATTAACAGCTCAAATACAGCTAACTTTGGAAATGAACACGATGGAAACTTGTTGGTGTGTTTTCTATGCATTTCGACCTG"
+  },
+  "CLsat1.2": {
+   "family": "CLsat1",
+   "seq": "AAAGAAGCTAGTTCGGACGTACTTGGCTTTTGTAACGTTCAATTTGGCTCATTTGCGCGATTTTGCATTAACAGCTCAAGTACACCTAACTTTGCAAATGAACACGATGGGAACTTGCTGGTGTGTTTTCTATGCATTTCGACCTG"
+  },
+  "CLsat1.3": {
+   "family": "CLsat1",
+   "seq": "AAAGAAGCATGTTAGGATGTACTTGGCTTTCCTAACGTTCAGTTTGGCTTATTTGCGTGATTTGGCATTAACAGCTCAAATACACCTAACTTTGCAAATGAACACGATAGAAACTTGTTGGTGTGTTTTCTATGCATTTCGACCTG"
+  },
+  "CLsat1.4": {
+   "family": "CLsat1",
+   "seq": "AAAGAAGCTATTTCGGATGTACTTGGCTTGTGTAACGTTCAGTTTGGCTCATTTGCGCGATTTTGCATTAACAGCTCAAGTACACCTAACTTGGGAGAGAAACACGATGGACGCTTGCTGGTGTGTTTTCTATGCATTTCGACCTG"
+  },
+  "CLsat1.5": {
+   "family": "CLsat1",
+   "seq": "AAAGAAGCTAGTTTGGGTGTTCAGTTTGGCTTACTTGCGTGATTTTGCATTAACAGCTCAAATACAGCTAACTTTGGAAATGAACACGATGGAAACTTGTTGGTGTGTTTTCTATGCATTTCGACCTG"
+  },
+  "CLsat2": {
+   "family": "CLsat2",
+   "seq": "AAAGAAGCTCATTGGGATGTAGTTGTGTTTCTAAGCTTCATTTTAGCTTATTTGCGTGATTTCGCTTTTAAGGCTCAAATACAGCTATCTTTTGAAAGCAACACGTTAGAAACTTCTTGGTGTGTTTTTCATGCATTTGGACCCA"
+  },
+  "CLsat3.1": {
+   "family": "CLsat3",
+   "seq": "AAAGAAGCTCGTTCGGATGTCTTTCTGTTTTCTAAGCTTCATTTGAGCTTCTTTGCGTCAATTTGCACTCCAGACTCAAAAACGGCTCTCTTTTGAAAGGAACACCAAAGAAGCTTGTTCGTGTGTTTCCCATGCATTTCCAGCCC"
+  },
+  "CLsat3.2": {
+   "family": "CLsat3",
+   "seq": "AAAGAAGCTCGTTCGGATGTATTTGTGTTTTCTAACCTTCATTTTAACTTATTTGCGTGACTTTGCATTCACAACTCAAAAACACCTATCTTTTGAAATAAACATGATAGAAGCTTGTTCGTCTGTTTTCCATGCATTTCGACCCC"
+  },
+  "CLsat4": {
+   "family": "CLsat4",
+   "seq": "AAAGAAGCTCGTTTGGATGTATTTGCGTGACTTTGCATTCACAACTCAAAAACACATATCTTTTGAAATGAAGGTGATGGAAGCTTGTTCGTGTGTTTTCTATGCATTTCGAGCCT"
+  }
+ },
+ "sat_bits": 50,
+ "edge_tol": 50,
+ "flank_view": 5000,
+ "orthology": {
+  "min_pid": 80,
+  "min_aln": 200,
+  "flank_bp": 600
+ },
+ "arbitration": {
+  "delta": 20,
+  "delta_ambig": 15
+ }
+}

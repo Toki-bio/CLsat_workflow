@@ -63,6 +63,17 @@ def cmd_not_yet(a: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_viewer(a: argparse.Namespace) -> int:
+    from .run import StageError
+    from .viewer import build
+    try:
+        build(a.run_dir, out_dir=a.out, viewer_html=a.viewer_html, flank_scan=not a.no_flank_scan)
+    except (StageError, FileNotFoundError) as e:
+        print(f"satpipe viewer: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_run(a: argparse.Namespace) -> int:
     from .run import StageError, run, stage_ids
     if a.list_stages:
@@ -114,9 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--list-stages", action="store_true")
     r.set_defaults(func=cmd_run)
 
-    v = sp.add_parser("viewer", help="assemble the viewer directory for a run (not implemented yet)")
+    v = sp.add_parser("viewer", help="assemble the viewer directory (data files + viewer_config.json + page) for a finished run")
     v.add_argument("run_dir")
-    v.set_defaults(func=cmd_not_yet)
+    v.add_argument("--out", help="output directory [<run_dir>/viewer]")
+    v.add_argument("--viewer-html", help="index.html to copy in [the copy vendored with satpipe]")
+    v.add_argument("--no-flank-scan", action="store_true", help="skip the +-5 kb flank background scan (needs ssearch36)")
+    v.set_defaults(func=cmd_viewer)
     return p
 
 
