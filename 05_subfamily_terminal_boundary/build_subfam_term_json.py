@@ -32,8 +32,12 @@ with open(f"{W}/terminal_monomers.tsv") as f:
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 10: continue
-        lid, subt, mono, end, cs, ce, cov, frac, partial, pid = p
+        lid, subt, mono, end, cs, ce, cov, frac, partial, pid = p[:10]
+        strand = p[10] if len(p) > 10 else None      # written by terminal_monomers.sh since 2026-10-15
+        edge_gap = (None if len(p) < 12 or p[11] == "NA" else int(p[11]))
         rec = {
+            "strand": strand,
+            "edge_gap": edge_gap,
             "cons_start": None if cs=="NA" else int(cs),
             "cons_end": None if ce=="NA" else int(ce),
             "covered": None if cov=="NA" else int(cov),

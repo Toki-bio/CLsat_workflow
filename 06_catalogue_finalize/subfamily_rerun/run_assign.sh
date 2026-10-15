@@ -51,13 +51,13 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
     bits=$(echo "$res" | cut -f12)
     pid=$(echo "$res" | cut -f3)
     aln=$(echo "$res" | cut -f4)
-    bi=${bits%%.*}
-    cur_best_i=${bestbits%%.*}
-    if [ "$bi" -gt "${cur_best_i:--1}" ] 2>/dev/null; then
-      second=$best; secondbits=$bestbits
-      best=$sub; bestbits=$bits; bestpid=$pid; bestaln=$aln
-    elif [ -z "$second" ] || [ "$bi" -gt "${secondbits%%.*}" ] 2>/dev/null; then
-      second=$sub; secondbits=$bits
+    # Compare bitscores as floats (the earlier integer truncation let a 0.4-bit-lower
+    # candidate win on ties of the integer part; L299/L327/L396/L407 had negative delta).
+    if awk -v a="$bits" -v b="$bestbits" 'BEGIN{exit !(a>b)}'; then
+      second="$best"; secondbits="$bestbits"
+      best="$sub"; bestbits="$bits"; bestpid="$pid"; bestaln="$aln"
+    elif awk -v a="$bits" -v b="$secondbits" 'BEGIN{exit !(a>b)}'; then
+      second="$sub"; secondbits="$bits"
     fi
   done
   delta="NA"

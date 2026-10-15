@@ -19,7 +19,8 @@ results reported in the manuscript, arranged in pipeline order. It has been
 04_flank_orthology/            Cross-assembly flank extraction, classification, orthology
 05_subfamily_terminal_boundary/ Sub-subfamily calls, terminal monomers, boundary phase
 06_catalogue_finalize/         85 Mb scaffold recovery, edge refinement, re-arbitration
-viewer/                        Single-file D3 viewer + its static JSON data products
+07_post_catalogue/             Singleton screen (L541), candidates C1-C7, IMO-TaqI test, Figure 2
+viewer/                        Pointer to the viewer repository; data-product provenance table
 ```
 
 ---
@@ -42,7 +43,9 @@ those `.dat` files.
 | `Step6.sh` | Per-species `vsearch --cluster_fast --id 0.90` → `clusters_by_file/{sp}/` |
 | `Step7.sh` | Per cluster: MAFFT align, rotate to rightmost start, realign → `*.rotated.fa` |
 
-Step 5 is a one-liner rather than a numbered script:
+Step 5 is `Step5.sh` (plus-strand lexicographically-minimal rotation; the reverse complement is
+deliberately not considered, matching `vsearch --strand plus` in Steps 6 and 8 — this is what
+left L541 unclustered). Its core is:
 
 ```bash
 for fa in *.clean.fas; do
@@ -115,7 +118,13 @@ dense pinpoint. Key parameters: `--min-bits 50`, `--min-aln-frac 0.67`.
 
 | Script | Role |
 |---|---|
-| `build_master.sh` | Union the four families' expanded intervals, merge per species with family provenance (`bedtools merge -c 4,5 -o distinct`) → `MASTER.merged.bed` |
+| `build_master.sh` | Union the four families' expanded intervals (`out_CLsat<N>.expanded_merged.bed`, or `EXP_CLSAT<N>=<path>`), merge per species with family provenance (`bedtools merge -c 4,5 -o distinct`) → `MASTER.merged.bed` |
+
+> **Input provenance.** The published MASTER was built from the `cli_v6` re-expansion of CLsat1
+> (`v6full_CLsat1.expanded_merged.bed`) and the Jun-12 expansions of CLsat2–4
+> (`out_CLsat{2,3,4}_v4.expanded_merged.bed`, whose `MIN_ALN` was 292/290/232 bp against
+> cli_v6's 293/291/233 — a 1 bp difference). Until 2026-10-15 `build_master.sh` hard-coded the
+> `_v4` name for all four families, which for CLsat1 is the truncated Jun-14 run.
 | `arbitration_patched.sh` | 2nd scan bits matrix → D3b segmentation → D6 three-branch family arbitration → `MASTER.final_assignment.tsv` |
 
 The 2nd scan re-runs `clisat_expand_then_scan_merged.sh --scan-only` on the fixed
@@ -147,7 +156,10 @@ catalogue and returns the identical result.
 ### 05 — Sub-subfamily, terminal monomers, boundary phase
 
 `assign_subfamily.sh` (2-monomer boundary window vs doubled sub-subfamily
-consensuses, Δ≥10 bits = confident), `terminal_monomers.sh`, `boundary_phase.sh`,
+consensuses, Δ≥10 bits = confident; bitscores compared as floats since 2026-10-15),
+`terminal_monomers.sh` (rewritten 2026-10-15: window vs doubled consensus, strand recorded,
+phase read at the array edge — the earlier version reported the best-scoring monomer in the
+window, not the terminal one), `boundary_phase.sh`,
 plus the JSON builders that produce the viewer's data products.
 
 ### 06 — Catalogue finalization
@@ -167,7 +179,7 @@ plus the JSON builders that produce the viewer's data products.
 
 TRF v4.10.0-rc.2 · VSEARCH v2.30.0 · MAFFT v7.526 · FASTA/`ssearch36` v36.3.8e ·
 EMBOSS v6.6.0.0 (`cons`, `water`) · BLAST+ 2.17.0+ · samtools v1.22.1 ·
-bedtools v2.31.1 · GNU parallel · Python 3.12.11 (numpy 2.3.2, pandas 2.3.2) ·
+bedtools v2.31.1 · GNU parallel · Python 3.12.11 (numpy 2.3.2) ·
 `gawk` (required — `asorti`). Linux x86-64.
 
 ---
@@ -241,7 +253,8 @@ These are stated rather than smoothed over:
    but the omission is real and is recorded here rather than silently corrected.
 
 5. **The Step-9 cluster→family assignment is curated, not computed.** It derives from
-   UPGMA tree inspection. It is deposited as an explicit table (above) so the result is
+   UPGMA tree inspection. It is deposited as an explicit table (above, and as
+   `02_seed_expansion_scan/cluster_family.tsv`) so the result is
    regenerable; it is not claimed to be an automatic consequence of a threshold.
 
 ### Reproducing this
@@ -252,11 +265,35 @@ stages — roughly 1.5 h and 3 h respectively at `--jobs 16` on a 64-core host. 
 
 ---
 
+## Changes after the reproduction report (2026-10-15 audit)
+
+The reproduction report above describes the code as deposited on 2026-08-04. The following fixes
+were applied afterwards; those marked **re-run** can change numbers and have not been re-run
+against the genomes.
+
+| Script | Change | Effect on a re-run |
+|---|---|---|
+| `01/Step4.sh` | `asorti(start, idx)` sorted index *strings* ("1","10","11",…,"2"), so the overlap merge saw starts out of order for motifs with ≥10 TRF hits; now visits intervals by start value. `trf` no longer aborts `set -e`; outputs are truncated before appending. | **re-run**: coverage values change for such motifs, so the ≤50 bp simple-repeat filter may admit or drop a few motifs |
+| `01/Step3.sh`, `01/Step7.sh` | `grep -c … \|\| echo 0` printed `0\n0` on no match | none |
+| `01/Step6.sh` | cluster files renamed by vsearch's own number, not lexical order | file names only |
+| `02/clisat_expand_then_scan_merged.sh` | rows whose scaffold begins with `Chr` are no longer discarded; every locus that cannot be processed is written to `OUT.dropped.tsv` and the seed count is reconciled; header, defaults and `--help` corrected; Phase-2/3 'signal' test documented as weaker than Phase 1 | none on the published assemblies |
+| `03/build_master.sh` | reads `out_CLsat<N>.expanded_merged.bed` (overridable), `LC_ALL=C` | see provenance note above |
+| `03/arbitration_patched.sh`, `06/rearbitration/arbitration_540.sh` | branch 3 writes Δ = seed − strongest other (same sign as branches 1–2; contradiction when Δ ≤ −20) and visits families in sorted order; D3b uses `(pos−1)//BIN` like D3; short segments are written to `MASTER.loci.segmented.bed.short_segments.bed` (default `SEG_SHORT=drop` keeps the published behaviour; `SEG_SHORT=merge` folds them into the longer neighbour); `LC_ALL=C` | Δ sign only, unless a scan window starts at a multiple of 1000 bp (**re-run** to confirm 626) |
+| `04/clean_ortho_pairs.py`, `04/rebuild_ortho_segmented.py` | overlap guard converts the 1-based flank to 0-based before the interval test (1 bp) | **re-run**: a flank starting on the last base of a neighbouring locus is now rejected |
+| `04/` | `disc_ortho.py`, `flank_classify.py`, `ortho_matrix.py` moved to `superseded_blastn/consumers/` | none |
+| `05/assign_subfamily.sh`, `06/subfamily_rerun/run_assign.sh` | bitscores compared as floats (integer truncation let L299, L327, L396, L407 be called with negative Δ) | **re-run**: those four low-confidence calls flip to the higher-scoring sub-subfamily |
+| `05/terminal_monomers.sh`, `build_subfam_term_json.py` | rewritten (see §05); adds `strand` and `edge_gap` | **re-run**: all terminal-monomer values; the viewer's old file is withdrawn |
+| `07/imotaq_compare.sh` | DarSat FASTA resolved before `cd`; second argument | none |
+| `07/README.md`, `singleton_screen.sh` | singleton-screen arithmetic reconciled (6 inside + L541 + 7 outside = 14) | none |
+| deposit | `Step5.sh`, `Step8_cross_cluster.sh`, `Step9_family_fasta.sh`, `cluster_family.tsv`, `consensus/CLsat{1..4}.cons.fa`, `genomes.example.tsv`, `cli_v6.sh`/`cli.sh` links | — |
+
+Still not deposited: `CLsat_cons.rot` (Step 8 references) and the sub-subfamily consensus FASTA
+(`subx/`); `sub44_4_4_prefix.fa` in the 85 Mb recovery was made by hand.
+
 ## Viewer
 
-`viewer/index.html` is a single-file D3 application driven entirely by the static
-JSON products in the same directory (`flanks.json`, `flank_orthologs.json`,
-`subfamily.json`, `terminal_monomers.json`, `boundary_phase.json`). It draws
-per-window bitscore tracks for all four subfamilies along each array, so composite
-loci and subfamily transitions are visible directly rather than inferred from the
-arbitration table. Live at <https://toki-bio.github.io/CLsat-viewer/>.
+The viewer is maintained in [Toki-bio/CLsat-viewer](https://github.com/Toki-bio/CLsat-viewer)
+(live at <https://toki-bio.github.io/CLsat-viewer/>); `viewer/README.md` here maps each data
+product it reads to the script that produces it. It draws per-window bitscore tracks for all four
+subfamilies along each array, so composite loci and subfamily transitions are visible directly
+rather than inferred from the arbitration table.

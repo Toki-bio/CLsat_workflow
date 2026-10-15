@@ -30,10 +30,11 @@ strong its CLsat signal is.
 The screen asks what that cost. Of the 979, **14** score above the 50-bit noise
 floor, all of them above 77 bits:
 
-* **7** already lie inside catalogued loci, swallowed by a neighbouring seed's
+* **6** already lie inside catalogued loci, swallowed by a neighbouring seed's
   boundary expansion;
 * **1** is L541 (mix, `JAWWNH010000226.1:1–43,510`, ~298 monomers, CLsat3 at 127.8
-  bits) — added to the catalogue by hand;
+  bits) — added to the catalogue by hand (the script's intersection, run against the
+  541-locus catalogue, therefore reports it among "7 inside");
 * **7** remain outside it. They are short (1.5–2.0 kb) and diverged (66.7–80.8 %
   identity to their nearest sub-subfamily consensus, against a catalogue median of
   97.4 %). They are **excluded from every number in the manuscript** and appear only

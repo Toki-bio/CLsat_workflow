@@ -1,0 +1,1 @@
+../02_seed_expansion_scan/clisat_expand_then_scan_merged.sh

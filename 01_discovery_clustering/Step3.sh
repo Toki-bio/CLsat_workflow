@@ -61,7 +61,7 @@ while IFS= read -r -d '' dat_file; do
     }
   ' "$target" > "$output_file"
 
-  motif_count=$(grep -c '^>' "$output_file" || echo 0)
+  motif_count=$(grep -c '^>' "$output_file" || true)   # grep -c prints 0 itself on no match
   echo "  Saved to $output_file ($motif_count motifs)"
 done
 

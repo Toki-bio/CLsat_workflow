@@ -21,3 +21,15 @@ The current method is in the parent directory:
   rather than the merged one, producing `segmented627_*` in the data deposit. It returns
   the identical 53-pair / 18-both-flank result, confirming the outcome does not depend on
   which catalogue the flanks are attributed to.
+
+## `consumers/`
+
+`disc_ortho.py`, `flank_classify.py` and `ortho_matrix.py` read the outputs of the scripts
+above (`flank_analysis/flank_orthologs.json`, `locus_master.tsv`, `locus_flank_class.tsv`,
+500 bp flanks, a three-class scheme). They were moved here on 2026-10-15 because they belong
+to this superseded chain, not to the published method. `clean_ortho_pairs.py` writes its own
+matrix and class table.
+
+Note also that `05_subfamily_terminal_boundary/{assign_subfamily.sh,boundary_phase.sh,build_json.py}`
+still read `all_regions.fa` / `manifest.tsv`, which are produced by `extract_flanks.sh` here or by
+`06_catalogue_finalize/subfamily_rerun/run_extract.sh` (the guarded re-implementation).

@@ -1,0 +1,23 @@
+# Step 9 - curated assignment of Step-8 cross-species clusters (vsearch --cluster_fast, --id 0.90,
+# references prepended; see PIPELINE.md) to CLsat families, from inspection of a MAFFT/UPGMA tree
+# of the centroids. Cluster numbers are vsearch's own (cross_clusters/clust_<N>); Step 8 is
+# deterministic and reproduces byte-identically, so they are stable.
+# cluster	family	note
+59	CLsat1	
+61	CLsat1	
+66	CLsat1	
+67	CLsat1	
+68	CLsat1	
+9	CLsat1	
+90	CLsat1	
+70	CLsat2	
+71	CLsat2	
+60	CLsat3	
+0	CLsat3	
+62	CLsat3	single arm locus; intermediate between CLsat1/2/3, assigned to CLsat3 by judgement
+63	CLsat3	
+64	CLsat3	
+65	CLsat3	
+69	CLsat3	
+113	CLsat4	
+6	CLsat4	

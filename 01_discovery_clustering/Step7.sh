@@ -23,7 +23,7 @@ for infa in "$INPUT_DIR"/*.fa; do
   [ -e "$infa" ] || { echo "No *.fa files found in $INPUT_DIR"; exit 1; }
 
   # Check if file has more than one sequence
-  seq_count=$(grep -c '^>' "$infa" || echo 0)
+  seq_count=$(grep -c '^>' "$infa" || true)   # grep -c prints 0 itself on no match
   if [ "$seq_count" -le 1 ]; then
     echo "Skipping $infa: contains $seq_count sequence(s) (requires >1)"
     continue

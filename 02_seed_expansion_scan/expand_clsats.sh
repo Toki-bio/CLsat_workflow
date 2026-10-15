@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SUPERSEDED (kept for provenance only). This is the serial, single-genome predecessor of
+# clisat_expand_then_scan_merged.sh. It computes MIN_ALN from the query length
+# (QLEN = QREP*MONO) and defaults --min-aln-frac to 1.0, i.e. the behaviour that cli_v6
+# replaced. Do not use it for new runs; it is not part of the documented pipeline.
 set -euo pipefail
 
 # expand_clsats.sh

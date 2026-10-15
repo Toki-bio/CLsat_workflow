@@ -59,6 +59,8 @@ for line in open(V6 + '/v6full_CLsat1.expanded_merged.bed'):
     p = line.rstrip('\n').split('\t')
     if len(p) >= 4:
         raw.append((p[3].split('|')[0], p[0], int(p[1]), int(p[2]), 'CLsat1'))
+# CLsat2-4: the Jun-12 expansions (file name suffix _v4 is historical; see PIPELINE.md);
+# CLsat1 above is the cli_v6 re-expansion. This is the input mix the catalogue was built from.
 for fam in ('CLsat2', 'CLsat3', 'CLsat4'):
     fn = SD + '/out_%s_v4.expanded_merged.bed' % fam
     for line in open(fn):
@@ -96,8 +98,10 @@ def faidx(sp, scf, s, e):
 
 # ---- 2/3. flanks with overlap guard + classification ----
 def overlaps_other(sp, scf, fs, fe, self_i):
+    # flank [fs, fe] is 1-based inclusive; loci [s2, e2) are 0-based half-open.
+    # Convert the flank to 0-based half-open [fs-1, fe) before the interval test.
     for (s2, e2, j) in lidx[(sp, scf)]:
-        if j != self_i and fs - GUARD < e2 and fe + GUARD > s2:
+        if j != self_i and (fs - 1) - GUARD < e2 and fe + GUARD > s2:
             return True
     return False
 

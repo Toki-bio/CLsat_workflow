@@ -24,24 +24,25 @@ for infa in "$INPUT_DIR"/*.rot; do
 
   echo "=== Clustering '$infa' -> $base_dir (id=$ID) ==="
 
-  # run vsearch and ask it to write cluster files with the given prefix inside base_dir
-  # created files will look like: cluster_${base}_00001.fa, cluster_${base}_00002.fa, ...
+  # run vsearch and ask it to write cluster files with the given prefix inside base_dir.
+  # vsearch numbers them cluster_${base}_0, cluster_${base}_1, ... (no zero padding) in
+  # the order clusters were created. Strand defaults to plus; see PIPELINE.md Step 5/6.
+  rm -f "$base_dir"/cluster_"$base"_* "$base_dir/${base}"_cluster_*.fa
   vsearch --cluster_fast "$infa" --id "$ID" --clusters "$base_dir/cluster_${base}_" --quiet
 
-  # rename cluster files to a neat, predictable pattern: ${base}_cluster_1.fa, ${base}_cluster_2.fa ...
+  # rename to ${base}_cluster_N.fa keeping vsearch's own cluster number + 1, so the name
+  # identifies the cluster regardless of lexical file order.
   idx=0
   for cf in "$base_dir"/cluster_"$base"_*; do
-    # nullglob ensures loop is skipped if no match
     [ -e "$cf" ] || continue
+    k="${cf##*_}"
+    mv -- "$cf" "$base_dir/${base}_cluster_$((k + 1)).fa"
     idx=$((idx + 1))
-    # use -n to avoid overwriting any existing file
-    mv -n -- "$cf" "$base_dir/${base}_cluster_${idx}.fa"
   done
 
   if (( idx == 0 )); then
     echo "WARNING: vsearch produced no cluster files for '$infa'."
-    echo "  - Check vsearch version / options. Some vsearch builds may not write cluster files."
-    echo "  - If that happens I can provide a fallback that uses --uc to map sequences to clusters."
+    echo "  - Check vsearch version / options (--clusters must be supported by this build)."
   else
     echo "Created $idx cluster file(s) in: $base_dir"
   fi

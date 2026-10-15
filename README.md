@@ -75,7 +75,7 @@ TRF (.dat)
 | `05_subfamily_terminal_boundary/` | Sub-subfamilies, array ends, phase |
 | `06_catalogue_finalize/` | Recovery, refinement, final arbitration |
 | `07_post_catalogue/` | Checks run after the catalogue: singleton screen (recovered L541), the seven uncatalogued candidate arrays, the IMO-TaqI identity test, Figure 2 |
-| `viewer/` | Single-file D3 viewer and its JSON data products |
+| `viewer/` | Pointer to the viewer repository and a map of which script produces each data product |
 
 Full per-script documentation, exact commands, and parameters: **[PIPELINE.md](PIPELINE.md)**
 
@@ -84,7 +84,7 @@ Full per-script documentation, exact commands, and parameters: **[PIPELINE.md](P
 ## Requirements
 
 TRF · VSEARCH · MAFFT · FASTA (`ssearch36`) · EMBOSS · BLAST+ · samtools · bedtools ·
-GNU parallel · Python 3 (numpy, pandas) · `gawk`
+GNU parallel · Python 3 (numpy) · `gawk` (≥ 4.0, for `PROCINFO["sorted_in"]` and `asorti`)
 
 Exact versions used are listed in [PIPELINE.md](PIPELINE.md#software-versions).
 
@@ -95,7 +95,22 @@ Exact versions used are listed in [PIPELINE.md](PIPELINE.md#software-versions).
 - Steps 3–10 run in minutes; boundary expansion and the symmetric rescan are the
   expensive stages (~1.5 h and ~3 h at `--jobs 16` on a 64-core host).
 - The CLsat family assignment (Step 9) derives from curated tree inspection and is
-  deposited as an explicit cluster→family table, not re-derived from a threshold.
+  deposited as an explicit cluster→family table (`02_seed_expansion_scan/cluster_family.tsv`),
+  not re-derived from a threshold.
+- Steps 5, 8 and 9 are scripts (`Step5.sh`, `Step8_cross_cluster.sh`, `Step9_family_fasta.sh`);
+  `cli_v6.sh` / `cli.sh` referenced by the stage-06 drivers are links to
+  `clisat_expand_then_scan_merged.sh`. The four CLsat consensuses are in
+  `02_seed_expansion_scan/consensus/`; `genomes.example.tsv` shows the `genomes.tsv` format.
+- Not deposited, because they exist only on the analysis server: the phase-rotated reference
+  file `CLsat_cons.rot` used in Step 8 (the rotated form of the four consensuses above) and
+  the sub-subfamily consensus FASTA (`subx/`) that `assign_subfamily.sh` reads.
+- Every script carries the absolute `/staging/...` paths of the original run; set the path
+  variables at the top of each script before running elsewhere.
+- 2026-10-15 audit fixes that change numbers on a re-run and must be checked against the
+  published catalogue: `Step4.sh` interval sort (coverage filter), `assign_subfamily.sh`
+  float comparison (four low-confidence sub-subfamily calls), the D3b bin index (`pos-1`),
+  `terminal_monomers.sh` (rewritten; the previous output did not measure terminal monomers).
+  See PIPELINE.md "Changes after the reproduction report".
 
 ## Citation
 

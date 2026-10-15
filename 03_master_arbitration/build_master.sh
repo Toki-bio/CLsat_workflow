@@ -2,11 +2,19 @@
 set -euo pipefail
 die(){ echo "ERROR: $*" >&2; exit 1; }
 BASE="${PWD}"; mkdir -p "$BASE/out"
+export LC_ALL=C   # byte-order sort everywhere, so locus numbering (L1..) does not depend on locale
 
+# Inputs: the PASS1+2 expansion of each family, as written by
+#   clisat_expand_then_scan_merged.sh <seeds> <genomes.tsv> <cons> <MONO> out_CLsat<N>
+# i.e. out_CLsat<N>.expanded_merged.bed. Override per family with EXP_CLSAT<N>=<path>.
+# History: the published catalogue was built from v6full_CLsat1 (cli_v6, fixed --min-aln-frac)
+# and the Jun-12 out_CLsat{2,3,4}_v4 files; this script previously hard-coded "_v4" for all
+# four, which for CLsat1 is the truncated Jun-14 run. See PIPELINE.md.
 echo "=== step 1: concat 4 family BEDs + add family col ==="
 for fam in 1 2 3 4; do
-  f="out_CLsat${fam}_v4.expanded_merged.bed"
-  [[ -s "$f" ]] || die "missing: $f"
+  var="EXP_CLSAT${fam}"
+  f="${!var:-out_CLsat${fam}.expanded_merged.bed}"
+  [[ -s "$f" ]] || die "missing: $f (set $var=<path> to point at another expansion BED)"
   awk -v FAM="CLsat${fam}" 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,$4,FAM}' "$f"
 done | sort -k1,1 -k2,2n > "$BASE/out/all_fams.bed"
 echo "  $(wc -l < "$BASE/out/all_fams.bed") rows pre-merge"

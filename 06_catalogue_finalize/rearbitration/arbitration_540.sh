@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C   # byte-order sort: locus numbering must not depend on the locale
 
 # arbitration_patched.sh -- CLsat locus family assignment pipeline
 #
@@ -93,7 +94,7 @@ log "D3b: segmenting composite loci"
 
 python3 - "$OUT/MASTER.loci.bed" "$BITS1" "$BITS2" "$BITS3" "$BITS4" \
   "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" "$OUT/MASTER.loci.segmented.bed" <<'PYEOF'
-import sys
+import sys, os
 from collections import defaultdict
 loci_file=sys.argv[1]; bits_files=sys.argv[2:6]
 families=["CLsat1","CLsat2","CLsat3","CLsat4"]
@@ -111,10 +112,16 @@ for fi,bf in enumerate(bits_files):
         f.readline()
         for line in f:
             p=line.rstrip("\n").split("\t"); scf,pos,bits=p[0],int(p[1]),float(p[2])
-            b=pos//BIN
+            b=(pos-1)//BIN   # pos is a 1-based window start; bins are 0-based like the BED (same pos-1 as D3)
             if bits>bins[scf][b][fam]: bins[scf][b][fam]=bits
     print(f"  Loaded {bf} ({fam})",file=sys.stderr)
 total_seg=0; n_split=0; out=open(out_file,"w")
+# Segments shorter than MIN_LOCUS: the published run DROPPED them (default, SEG_SHORT=drop),
+# which removes sequence from the catalogue and leaves gaps in segment numbering
+# (e.g. L12.1, L12.3). SEG_SHORT=merge folds each short segment into its longer neighbour
+# instead. Either way every dropped/merged piece is written to <out>.short_segments.bed.
+SEG_SHORT=os.environ.get("SEG_SHORT","drop")
+short_out=open(out_file+".short_segments.bed","w"); n_short=0; bp_short=0
 for scf,start,end,lid in loci:
     bin_start=start//BIN; bin_end=(end-1)//BIN
     dom=[]
@@ -138,12 +145,31 @@ for scf,start,end,lid in loci:
         out.write(f"{scf}\t{start}\t{end}\t{lid}\n"); total_seg+=1
     else:
         n_split+=1
+        segs=[]
         for si,(sb,eb,fam) in enumerate(segments):
             s_bp=max(start,(bin_start+sb)*BIN); e_bp=min(end,(bin_start+eb+1)*BIN)
-            if e_bp-s_bp<MIN_LOCUS: continue
-            out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{si+1}\n"); total_seg+=1
-out.close()
+            segs.append([s_bp,e_bp,fam,si+1])
+        if SEG_SHORT=="merge":
+            # fold short segments into the longer adjacent segment (keep original numbering)
+            changed=True
+            while changed and len(segs)>1:
+                changed=False
+                for k,(s_bp,e_bp,fam,num) in enumerate(segs):
+                    if e_bp-s_bp<MIN_LOCUS:
+                        short_out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{num}\t{fam}\tmerged\n"); n_short+=1; bp_short+=e_bp-s_bp
+                        nb=k-1 if k>0 and (k==len(segs)-1 or (segs[k-1][1]-segs[k-1][0])>=(segs[k+1][1]-segs[k+1][0])) else k+1
+                        segs[nb][0]=min(segs[nb][0],s_bp); segs[nb][1]=max(segs[nb][1],e_bp)
+                        del segs[k]; changed=True; break
+        if len(segs)==1:
+            out.write(f"{scf}\t{segs[0][0]}\t{segs[0][1]}\t{lid}\n"); total_seg+=1; continue
+        for s_bp,e_bp,fam,num in segs:
+            if e_bp-s_bp<MIN_LOCUS:
+                short_out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{num}\t{fam}\tdropped\n"); n_short+=1; bp_short+=e_bp-s_bp
+                continue
+            out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{num}\n"); total_seg+=1
+out.close(); short_out.close()
 print(f"  Original: {len(loci)}, split: {n_split}, output: {total_seg}",file=sys.stderr)
+print(f"  Short segments (<{MIN_LOCUS} bp) {SEG_SHORT}: {n_short} pieces, {bp_short} bp -> {out_file}.short_segments.bed",file=sys.stderr)
 PYEOF
 
 check_file "$OUT/MASTER.loci.segmented.bed"
@@ -253,12 +279,16 @@ FNR==NR{ if(FNR==1) next; seed[$1]=$2; next }
   }
 
   # Branch 3: UNIQUE_SEED
+  # delta = seed bits - strongest other family, the same sign convention as branches 1-2
+  # (assigned - runner-up). Before 2026-10-15 this branch wrote bestv-sb, so the column had
+  # mixed signs. Candidates are visited in sorted order so ties are deterministic.
   sb=bits[s]; best=""; bestv=0
-  for(c in bits) if(c!=s && bits[c]>bestv){best=c;bestv=bits[c]}
-  delta=bestv-sb
+  n=asorti(bits,ks)
+  for(ki=1;ki<=n;ki++){ c=ks[ki]; if(c!=s && bits[c]>bestv){best=c;bestv=bits[c]} }
+  delta=sb-bestv
   flag="UNIQUE_SEED_ONLY"
   if(bestv>0) flag="UNIQUE_SEED_WITH_COMPETITOR"
-  if(delta>=D) flag="UNIQUE_SEED_CONTRADICTION"
+  if(delta<=-D) flag="UNIQUE_SEED_CONTRADICTION"   # the seed family is retained; the flag marks the disagreement
   print l,s,sb,best,bestv,delta,flag
 
 }' "$OUT/MASTER.locus_seeds.tsv" "$OUT/MASTER.locus_bits.tsv" \

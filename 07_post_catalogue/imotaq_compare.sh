@@ -36,9 +36,10 @@
 set -euo pipefail
 
 SS=/staging/conda/envs/bioinfo/bin/ssearch36
-DARSAT=DarSat_all_consensus.fa          # the 39 family consensuses (Additional file 2)
+DARSAT=$(readlink -f "${2:-DarSat_all_consensus.fa}")   # the 39 family consensuses (Additional file 2)
 OUT=${1:-./imotaq}
 E=https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+[ -s "$DARSAT" ] || { echo "ERROR: DarSat consensus FASTA not found: ${2:-DarSat_all_consensus.fa} (usage: $0 [out_dir] [darsat.fa])" >&2; exit 1; }
 mkdir -p "$OUT"; cd "$OUT"
 
 # --- 1. fetch IMO-TaqI from GenBank -----------------------------------------

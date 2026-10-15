@@ -21,8 +21,8 @@
 #   (loci_540.bed) to separate: already inside a catalogued locus / absent from it.
 #
 # RESULT AS RUN (2026-07-27)
-#   979 singleton loci; 14 above 50 bits, all above 77; 7 inside catalogued loci
-#   (including L541, added by hand); 7 outside -> the C1-C7 candidates.
+#   979 singleton loci; 14 above 50 bits, all above 77; 7 inside the 541-locus catalogue
+#   (6 swallowed by neighbouring loci + L541 itself, added by hand); 7 outside -> C1-C7.
 # =============================================================================
 set -euo pipefail
 
@@ -62,7 +62,8 @@ echo "singleton loci scoring >= 50 bits against a CLsat consensus:"
 awk '$3>=50' sing_best.tsv
 
 # --- 4. which of those are already inside a catalogued locus? ----------------
-# loci_540.bed is the 541-locus merged catalogue from step 06.
+# loci_540.bed is the 541-locus merged catalogue from stage 06 (540 pipeline loci + L541;
+# the file name predates the addition).
 BED=/staging/Sergei/Lacertidae/Darevskia/Satellites/manuscript/loci_540.bed
 if [ -f "$BED" ]; then
   awk '$3>=50{print $1}' sing_best.tsv \

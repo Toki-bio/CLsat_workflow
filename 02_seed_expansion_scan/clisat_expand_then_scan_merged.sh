@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # ============================================================================
-# clisat_expand_then_scan.sh  (v4)
+# clisat_expand_then_scan_merged.sh  (cli_v6: fixed --min-aln-frac base; referred to as
+# cli_v6.sh / cli.sh elsewhere in this repository — 06_catalogue_finalize/cli_v6.sh links here)
 # ============================================================================
 #
 # PURPOSE
@@ -12,7 +13,7 @@ set -euo pipefail
 #   monomer-step resolution to produce a bits-score profile.
 #
 # TYPICAL USAGE
-#   ./cli.sh CLsat1.bed genomes.tsv CLsat1.cons.fa 146 out_CLsat1 --jobs 8
+#   ./clisat_expand_then_scan_merged.sh CLsat1.bed genomes.tsv CLsat1.cons.fa 146 out_CLsat1 --jobs 16
 #
 # POSITIONAL ARGUMENTS
 #   1  BED            BED3+ file; col4 (name) must start "species|..."
@@ -39,7 +40,7 @@ set -euo pipefail
 #                       Default N=2 -> 3-copy query of length 3*MONO.
 #                       The extra copy avoids boundary edge effects. The doc
 #                       value N is NOT the copy count; copy count = N+1.
-#   --min-aln-frac  F   fraction of query length that must align [1.0]
+#   --min-aln-frac  F   fraction of the WINDOW (WIN_BP = 3*MONO) that must align [0.67]
 #   --min-bits      N   minimum ssearch36 bits score to accept a window [50]
 #   --max-steps     N   hard cap on dense expansion steps per direction [500]
 #                       At step=3*MONO=146 this gives ~217 kb max per side.
@@ -60,9 +61,14 @@ set -euo pipefail
 #     Stops when step < --probe-min-step*MONO. O(log N) calls.
 #     Scaffold boundary during probe: clean_pos1 = last confirmed position
 #     (probe_pos), NOT the scaffold edge -- avoids mis-reporting boundary.
-#     Probe window is probe_step wide (>> WIN_BP); MIN_BITS threshold applies
-#     identically because ssearch36 local alignment finds the best satellite
-#     hit regardless of flanking non-satellite sequence in large windows.
+#     Probe window is probe_step wide (>> WIN_BP); the MIN_BITS threshold is the
+#     same number, but the TEST is weaker: a probe block passes if ANY hit in it
+#     reaches MIN_BITS, with no MIN_ALN requirement, so a gap of up to PROBE_BP
+#     (100*MONO = 14.6 kb) inside a long array is bridged, whereas the dense walk
+#     (Phase 1) stops at the first failing 3-monomer window. Arrays that reach
+#     Phase 2 (> MAX_STEPS*STEP_BP ~ 219 kb) therefore have boundaries that are
+#     reproducible only to within a few kb. This is the likely cause of the
+#     split-vs-merged differences on megabase arrays noted in PIPELINE.md.
 #
 #   Phase 3: dense pinpoint (fires after Phase 2).
 #     Starts ONE STEP beyond probe_pos (probe_pos is already confirmed passing;
@@ -80,7 +86,7 @@ set -euo pipefail
 #   --scan-min-bits N   minimum bits to emit a scan hit [0]
 #
 #   Parallelism
-#   --jobs          N   GNU parallel workers for PASS1 and PASS3 [4]
+#   --jobs          N   GNU parallel workers for PASS1 and PASS3 [24]
 #
 # OUTPUTS
 #   OUT.expanded_per_locus.bed   BED4: one expanded interval per seed locus
@@ -119,7 +125,9 @@ set -euo pipefail
 die(){ echo "ERROR: $*" >&2; exit 1; }
 log(){ echo "[expand_then_scan] $*" >&2; }
 
-[[ $# -lt 5 ]] && die "Usage: $0 loci.bed genomes.tsv consensus.fa MONO out_prefix [options]"
+usage(){ awk 'NR>=4 && !/^#/{exit} NR>=4{sub(/^# ?/,""); print}' "$0"; }
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
+[[ $# -lt 5 ]] && die "Usage: $0 loci.bed genomes.tsv consensus.fa MONO out_prefix [options]  (--help for details)"
 
 BED=$1; GENOMES_TSV=$2; CONS=$3; MONO=$4; OUT=$5
 shift 5
@@ -147,7 +155,7 @@ while [[ $# -gt 0 ]]; do
     --scan-min-bits)    SCAN_MIN_BITS=$2;  shift 2;;
     --jobs)             JOBS=$2;           shift 2;;
     --scan-only)        SCAN_ONLY=1;       shift;;
-    -h|--help) exit 0;;
+    -h|--help) usage; exit 0;;
     *) die "Unknown option: $1";;
   esac
 done
@@ -171,7 +179,7 @@ mkdir -p "$OUTDIR"
 
 STEP_BP=$(( STEP_MON * MONO ))
 WIN_BP=$((  WIN_MON  * MONO ))
-QLEN=$(( (QREP+1) * MONO ))   # actual query: (QREP+1) copies of consensus
+# (the query is (QREP+1) copies of the consensus; its length is no longer used — see below)
 # FIX: MIN_ALN is the minimum ALIGNED LENGTH a WINDOW must yield. It must be a fraction of
 # WIN_BP (the window), not of QLEN (the query). With QLEN and MIN_ALN_FRAC=1.0 it demanded a
 # 438-column alignment from a 438bp window -- unsatisfiable, so the expansion never ran.
@@ -249,16 +257,24 @@ expand_locus(){
   seed_end0=$(  awk 'BEGIN{FS="[ \t]+"}{print $3}' <<<"$line")
   name=$(       awk 'BEGIN{FS="[ \t]+"}{print (NF>=4?$4:"")}' <<<"$line")
 
-  [[ -n "$name" && "$name" == *"|"* ]] || return 0
+  # Every locus that cannot be processed is reported on a DROP line (collected into
+  # OUT.dropped.tsv) instead of vanishing silently.
+  if [[ -z "$name" || "$name" != *"|"* ]]; then
+    printf "DROP\t%s\t%s\t%s\t%s\tname_lacks_species_prefix\n" "$chrom" "$seed_start0" "$seed_end0" "$name"; return 0
+  fi
   sp="${name%%|*}"
   genome=$(awk -v S="$sp" 'BEGIN{FS="\t"} $1==S{print $2; exit}' "$GENOME_MAP")
-  [[ -n "$genome" ]] || return 0
+  if [[ -z "$genome" ]]; then
+    printf "DROP\t%s\t%s\t%s\t%s\tspecies_not_in_genomes_tsv\n" "$chrom" "$seed_start0" "$seed_end0" "$name"; return 0
+  fi
   fai="${genome}.fai"
 
   seed_start0=$((seed_start0+0)); seed_end0=$((seed_end0+0))
   local L_scaf_len
   L_scaf_len=$(awk -v s="$chrom" 'BEGIN{FS="\t"} $1==s{print $2; exit}' "$fai")
-  [[ -n "$L_scaf_len" ]] || return 0
+  if [[ -z "$L_scaf_len" ]]; then
+    printf "DROP\t%s\t%s\t%s\t%s\tscaffold_not_in_fai\n" "$chrom" "$seed_start0" "$seed_end0" "$name"; return 0
+  fi
 
   local cleanL=$((seed_start0+1))  cleanR=$((seed_end0))
   local reasonL="NA"  reasonR="NA"  expL=0  expR=0
@@ -489,7 +505,9 @@ expand_locus(){
   done
 
   rm -rf "$WDIR"
-  (( cleanL <= cleanR )) || return 0
+  if (( cleanL > cleanR )); then
+    printf "DROP\t%s\t%s\t%s\t%s\tempty_after_expansion\n" "$chrom" "$seed_start0" "$seed_end0" "$name"; return 0
+  fi
 
   local new_start0=$((cleanL-1)) new_end0=$((cleanR)) expTot=$((expL+expR))
   printf "BED\t%s\t%d\t%d\t%s\n" "$chrom" "$new_start0" "$new_end0" "$name"
@@ -508,7 +526,9 @@ log "PASS1 expand (parallel --jobs $JOBS): step_bp=$STEP_BP win_bp=$WIN_BP min_b
 
 EXPAND_OUT="${TMPROOT}/expand_results.tsv"
 
-grep -v -E '^\s*$|^#|^chrom|^CHROM|^Chr' "$BED" \
+# Skip blank lines, comments and a literal header row only. (An earlier version also
+# dropped every row whose scaffold name begins with "Chr", i.e. all chromosome-named assemblies.)
+grep -v -E '^\s*$|^#' "$BED" | awk 'BEGIN{FS="[ \t]+"} !($1=="chrom"||$1=="CHROM"||$1=="Chr"||$1=="chr")' \
   | parallel --jobs "$JOBS" --keep-order --halt never \
       expand_locus "$TMPROOT" {} "$GENOME_MAP" "$CONS_X" "$CONS" \
         "$STEP_BP" "$WIN_BP" "$MIN_BITS_INT" "$MIN_ALN" "$MAX_STEPS" "$TO_SCAFF_ENDS" \
@@ -518,6 +538,12 @@ grep -v -E '^\s*$|^#|^chrom|^CHROM|^Chr' "$BED" \
 
 grep '^BED' "$EXPAND_OUT" | cut -f2- > "$EXP_BED" || true
 grep '^TSV' "$EXPAND_OUT" | cut -f2- >> "$EXP_TSV" || true
+DROP_TSV="${OUT}.dropped.tsv"
+grep '^DROP' "$EXPAND_OUT" | cut -f2- > "$DROP_TSV" || true
+n_in=$(grep -v -E '^\s*$|^#' "$BED" | awk 'BEGIN{FS="[ \t]+"} !($1=="chrom"||$1=="CHROM"||$1=="Chr"||$1=="chr")' | wc -l)
+n_out=$(wc -l < "$EXP_BED"); n_drop=$(wc -l < "$DROP_TSV")
+log "PASS1 reconciliation: $n_in seeds in, $n_out expanded, $n_drop dropped (see $DROP_TSV)"
+(( n_in == n_out + n_drop )) || log "WARNING: seed count does not reconcile ($n_in != $n_out + $n_drop)"
 
 # ── PASS 2 ───────────────────────────────────────────────────────────────────
 log "PASS2 merge expanded intervals"

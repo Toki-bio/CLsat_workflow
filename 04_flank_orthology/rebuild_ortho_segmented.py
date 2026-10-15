@@ -64,8 +64,9 @@ def faidx(sp, scf, s, e):
     return ''.join(l.strip() for l in r.stdout.splitlines() if not l.startswith('>')).upper() if not r.returncode else ''
 
 def overlaps_other(sp, scf, fs, fe, self_i):
+    # flank [fs, fe] is 1-based inclusive; loci [s2, e2) are 0-based half-open.
     for (s2, e2, j) in lidx[(sp, scf)]:
-        if j != self_i and fs - GUARD < e2 and fe + GUARD > s2:
+        if j != self_i and (fs - 1) - GUARD < e2 and fe + GUARD > s2:
             return True
     return False
 
