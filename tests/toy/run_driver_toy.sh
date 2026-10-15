@@ -35,7 +35,7 @@ EOF
 if [ -n "$EQ" ] && [ -s "$EQ/cluster_family.tsv" ]; then
   cp "$EQ/cluster_family.tsv" "$TAB"
 else
-  printf '0\tCLsat1\n' > "$TAB"      # placeholder so `check` passes; replaced after stage 08
+  printf '0\tCLsat1\n1\tCLsat2\n2\tCLsat3\n3\tCLsat4\n' > "$TAB"   # placeholder (one row per family) so `check` passes; replaced after stage 08
   satpipe run "$W/toy.yaml" --to 08_cross
   awk -F'\t' '($1=="S"||$1=="H") && $9 ~ /^CLsat[1-4]$/ {print $2"\t"$9}' "$W/run/cross/cross_species.uc" | sort -k1,1n > "$TAB"
 fi

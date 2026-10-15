@@ -57,7 +57,7 @@ viewer:
   title: "Satellite loci in the two Amazon molly haplotype assemblies (2021)"
   species_names: {lat: "P. formosa, latipinna-derived half (GCA_013036135.2)", mex: "P. formosa, mexicana-derived half (GCA_013036085.2)"}
 EOF
-printf '0\tMolSat1\n' > "$W/ref/cluster_family.tsv"     # placeholder until stage 08 has run
+printf '0\tMolSat1\n1\tMolSat2\n2\tMolSat3\n' > "$W/ref/cluster_family.tsv"   # placeholder (one row per family) until stage 08 has run
 satpipe check "$W/molly.yaml" | tail -1
 satpipe run "$W/molly.yaml" --to 08_cross
 # curated table: every Step-8 cluster that holds a reference record
