@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the manuscript below and this repository."
+title: "satpipe (CLsat workflow): a reusable satellite-DNA locus pipeline"
+type: software
+authors:
+  - family-names: Kosushkin
+    given-names: Sergei
+    email: toki.sk@gmail.com
+repository-code: "https://github.com/Toki-bio/CLsat_workflow"
+license: "NOT-YET-DECLARED"   # owner decision pending (HANDOFF.md, open decisions)
+version: 0.1.0.dev0
+date-released: 2026-10-15
+keywords:
+  - satellite DNA
+  - tandem repeats
+  - genome annotation
+  - Darevskia
+preferred-citation:
+  type: article
+  title: "Locus-resolved comparative analysis of minisatellite-scale satellite DNA in bisexual and hybrid parthenogenetic Darevskia lizards"
+  authors:
+    - family-names: Kosushkin
+      given-names: Sergei
+  journal: "Mobile DNA"
+  year: 2026
+  notes: "in revision; the code deposit cited by the manuscript is tag manuscript-deposit of this repository"

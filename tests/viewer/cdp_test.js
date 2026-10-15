@@ -22,9 +22,11 @@ function killThisInstanceOnly() {
 }
 
 (async () => {
-  const server = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: DIR, stdio: 'ignore' });
+  // DIR may be a directory (served locally) or an http(s) URL of a deployed page
+  const remote = /^https?:\/\//.test(DIR);
+  const server = remote ? { kill() {} } : spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: DIR, stdio: 'ignore' });
   await sleep(1500);
-  const url = `http://127.0.0.1:${PORT}/index.html`;
+  const url = remote ? DIR : `http://127.0.0.1:${PORT}/index.html`;
   exec(`"${CHROME}" --headless=new --disable-gpu --no-sandbox --user-data-dir="${profileDir}" --remote-debugging-port=${chromePort} --window-size=1500,1000 "${url}"`, { timeout: 120000 });
   await sleep(3000);
   let targets = [];
@@ -84,7 +86,7 @@ function killThisInstanceOnly() {
   for (const st of steps) { await sleep(600); console.log('STEP:', JSON.stringify(await evalJs(`JSON.stringify(${st})`))); }
   await sleep(1000);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync(path.join(DIR, 'screenshot.png'), Buffer.from(shot.result.data, 'base64'));
+  fs.writeFileSync(path.join(remote ? os.tmpdir() : DIR, 'screenshot.png'), Buffer.from(shot.result.data, 'base64'));
   console.log('CONSOLE (' + console_msgs.length + '):'); console_msgs.slice(0, 25).forEach(m => console.log('  ' + m.slice(0, 200)));
   console.log('ERRORS (' + errors.length + '):'); errors.forEach(e => console.log('  ' + e.slice(0, 300)));
   ws.close(); server.kill(); await killThisInstanceOnly();

@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  unit:
+    # no external tools: schema, check and viewer-list tests on synthetic data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -e ".[test]"
+      - run: python -m pytest -q
+      - run: satpipe check configs/darevskia_clsat.yaml --no-files --no-tools
+      - run: satpipe check configs/example_minimal.yaml --no-files --no-tools
+  toy:
+    # end to end on synthetic genomes with the real tools (conda); the equivalence harness
+    # against the original scripts, then the driver
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: conda-incubator/setup-miniconda@v3
+        with: {environment-file: environment.yml, activate-environment: satpipe, auto-activate-base: false}
+      - shell: bash -el {0}
+        run: |
+          pip install -e .
+          ln -sf "$(command -v gawk)" "$CONDA_PREFIX/bin/awk"
+          bash tests/toy/run_toy_equivalence.sh . /tmp/toy_eq 4d70b56
+          SEED=23 bash tests/toy/run_driver_toy.sh . /tmp/toy_drv /tmp/toy_eq
