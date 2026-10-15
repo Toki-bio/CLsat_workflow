@@ -149,7 +149,7 @@ Decisions the owner must make before or during the refactor:
 
 - [x] Repository layout — **decided 2026-10-15 by the owner: the tool replaces `CLsat_workflow` in place.** The deposit is frozen as tag `manuscript-deposit` (= former `main` @ `80dd458`); stage scripts moved with `git mv` to `satpipe/stages/`; superseded code in `legacy/`. The GitHub repository name is unchanged (renaming is still open; GitHub redirects a renamed repository).
 - [ ] Tool name and licence (none declared today; README says "academic and research use").
-- [ ] Driver: plain Python stage runner vs Snakemake.
+- [x] Driver — **decided 2026-10-15 by the owner: plain Python stage runner** (one function per stage calling the existing script; DONE markers with input checksums; manifest). A Snakemake file can be layered on the same stage functions later if a cluster version is ever wanted.
 - [ ] Whether the viewer stays a single file or splits into `index.html` + `viewer.js` + `viewer_config.json` (single file is a feature for deployment; a separate config is needed either way).
 - [x] Second test organism — **decided 2026-10-15 by the owner: the Amazon molly, *Poecilia formosa*.** The
   CLsat-revision session already ran TRF (`2 5 7 80 10 50 2000 -h`) and workflow Steps 3-8 on the two 2021
