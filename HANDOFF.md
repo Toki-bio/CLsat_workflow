@@ -216,3 +216,11 @@ Decisions the owner must make before or during the refactor:
 - Anchor phasing must be a mandatory automatic stage: rotate every written consensus/alignment (families, sub-subfamilies, molly) to the configured anchor motif (manuscript Methods 3.4: doubled consensus vs anchor, water, AAAGAAG check) and fail if any output does not start at the anchor.
 - Do NOT deposit C:\work\CLsat\manuscript\subsubfamily_consensuses.fasta as is (36 letters out of frame); use fig1b_rotated.fasta or re-rotate by 36.
 - Molly alignments in CLsat-viewer molly/alignments/ were made without an anchor step (in phase within families, arbitrary between).
+
+## Regression result (Darevskia, therioserver, 2026-10-16, code f77448a)
+Full run from the six GenBank assemblies (TRF regenerated, 85 Mb scaffold via chunked TRF), published cluster table re-derived with tests/darevskia/recurate_from_catalogue.py.
+- Seeds CLsat1 771 / CLsat2 288 / CLsat3 101 / CLsat4 44 (published 750/288/101/44; +21 CLsat1 from the 85 Mb scaffold, +2 other).
+- MASTER 542 (published 540): +2 = three loci split and one merged at 0.8-7 kb gaps between expansions (unp JAWDKN010000003.1; val JAWWNG010000434.1, 495.1 split; val 030.1 merged). Every locus overlaps a published one in both directions; the only absentee is manual L541, added after MASTER.
+- Segmented 627 (published 626 + L541 = 627), catalogue 628 (with the manual locus), ortholog pairs 53 (=), candidates 7 (=), 95 anchorable, 20 flagged, 27 contradiction rows.
+- Viewer built by `satpipe viewer`, headless-Chrome test passes (635 loci, 4 families, 3 lists 95/27/628; only favicon 404).
+- Not run here: sub-subfamily stage (subx/ only on DRAGEN -> empty table).
