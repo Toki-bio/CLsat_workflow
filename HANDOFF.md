@@ -212,7 +212,9 @@ Decisions the owner must make before or during the refactor:
 - [ ] What to do with L186 in the manuscript (seed family retained; contradiction flagged).
 - [ ] Whether `molly/` becomes its own repository now or after submission.
 
-## Open item from the CLsat revision session (2026-10-16)
+## Anchor phasing: DONE 2026-10-16 (request from the CLsat revision session)
+Implemented as stage `21_anchor`, `satpipe anchor [--check]` and `satpipe/anchor.py` (commits 5f92a20, 73f6d81); config block `anchor` (family, motif, max_motif_mismatch, min_identity, independent). The nine sub-subfamily consensuses re-rotate to exactly fig1b_rotated.fasta; the Darevskia run passes (4 families in frame). Still to do on the manuscript side: re-deposit `subsubfamily_consensuses.fasta` via `satpipe anchor`, and re-make the molly alignments from anchored consensuses (molly families are unrelated: `anchor.independent: true` keeps each family's own frame).
+Original request:
 - Anchor phasing must be a mandatory automatic stage: rotate every written consensus/alignment (families, sub-subfamilies, molly) to the configured anchor motif (manuscript Methods 3.4: doubled consensus vs anchor, water, AAAGAAG check) and fail if any output does not start at the anchor.
 - Do NOT deposit C:\work\CLsat\manuscript\subsubfamily_consensuses.fasta as is (36 letters out of frame); use fig1b_rotated.fasta or re-rotate by 36.
 - Molly alignments in CLsat-viewer molly/alignments/ were made without an anchor step (in phase within families, arbitrary between).
