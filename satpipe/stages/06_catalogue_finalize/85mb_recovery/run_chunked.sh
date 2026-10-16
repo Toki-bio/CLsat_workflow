@@ -7,11 +7,12 @@
 # everything else) -- no need for enormous overlap. The published run needed this for the
 # 85.83 Mb unp scaffold.
 #
-# A chunk on which TRF does not finish within TRF_TIMEOUT is bisected (two halves overlapping by
-# OVERLAP_BP) and each half is scanned again, recursively, until the pieces finish or are shorter
-# than MIN_PIECE_BP; pieces that still time out are written to unscanned.tsv and left out, never
-# imputed. This generalises the bisection cascade of the published run, whose one pathological
-# chunk ended at a ~57 kb telomeric (TTAGGG)n tail that TRF never terminates on.
+# A chunk on which TRF does not finish within TRF_TIMEOUT is cut into NSPLIT overlapping pieces
+# (overlap OVERLAP_BP, capped so the pieces shrink) and each piece is scanned again, recursively,
+# until the pieces finish or are shorter than MIN_PIECE_BP; pieces that still time out are written
+# to unscanned.tsv and left out, never imputed. This generalises the bisection cascade of the
+# published run, whose one pathological chunk ended at a ~57 kb telomeric (TTAGGG)n tail that TRF
+# never terminates on. Worst case per level = one TRF_TIMEOUT; 2 Mb -> 20 kb takes four levels.
 #
 # Usage: run_chunked.sh <genome.fa> <scaffold_name> <out_dir>
 # Environment (defaults = published run):
@@ -32,6 +33,7 @@ OVERLAP="${OVERLAP_BP:-50000}"
 TRF_PARAMS="${TRF_PARAMS:-2 5 7 80 10 50 2000}"
 TRF_TIMEOUT="${TRF_TIMEOUT:-1800}"
 MIN_PIECE="${MIN_PIECE_BP:-20000}"
+NSPLIT="${NSPLIT:-4}"           # a timed-out piece is cut into this many overlapping pieces
 JOBS="${JOBS:-16}"
 for t in samtools trf parallel python3 timeout; do command -v $t >/dev/null || { echo "$t not in PATH" >&2; exit 1; }; done
 [[ "$TRF_PARAMS" =~ ^[0-9]+(\ [0-9]+){6}$ ]] || { echo "TRF_PARAMS must be 7 integers" >&2; exit 1; }
@@ -104,12 +106,18 @@ while :; do
       echo "  UNSCANNED: $name ${SCFNAME}:$s-$e ($plen bp)"
       continue
     fi
-    mid=$(( s + plen / 2 ))
-    a_e=$(( mid + OVERLAP / 2 )); [ "$a_e" -gt "$e" ] && a_e=$e
-    b_s=$(( mid - OVERLAP / 2 )); [ "$b_s" -lt "$s" ] && b_s=$s
-    extract_piece "${name}a" "$s" "$a_e"; echo "chunks/${name}a.fa" >> "$next"
-    extract_piece "${name}b" "$b_s" "$e"; echo "chunks/${name}b.fa" >> "$next"
-    echo "  bisected $name (${plen} bp) -> ${name}a ${s}-${a_e}, ${name}b ${b_s}-${e}"
+    # split into NSPLIT pieces; the overlap is capped so that every piece is strictly shorter
+    # than its parent (an uncapped 50 kb overlap on a 60 kb piece would never shrink)
+    ov=$OVERLAP; [ "$ov" -gt $(( plen / (4 * NSPLIT) )) ] && ov=$(( plen / (4 * NSPLIT) ))
+    step=$(( (plen + NSPLIT - 1) / NSPLIT ))
+    for k in $(seq 0 $((NSPLIT - 1))); do
+      ps_=$(( s + k * step - ov )); [ "$ps_" -lt "$s" ] && ps_=$s
+      pe_=$(( s + (k + 1) * step - 1 + ov )); [ "$pe_" -gt "$e" ] && pe_=$e
+      [ "$ps_" -le "$pe_" ] || continue
+      sub="${name}_$((k + 1))"
+      extract_piece "$sub" "$ps_" "$pe_"; echo "chunks/$sub.fa" >> "$next"
+      echo "  split $name (${plen} bp) -> $sub ${ps_}-${pe_}"
+    done
   done
   [ -s "$next" ] || break
   level=$((level+1))
