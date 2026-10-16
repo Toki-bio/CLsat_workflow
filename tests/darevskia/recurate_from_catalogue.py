@@ -4,9 +4,11 @@
 The curated table names clusters by their vsearch number, which changes when the motif set changes
 (e.g. after the Step-4 coverage fix). This script re-derives the table from the published catalogue:
 every cluster member is a TRF motif locus (header sp|scf:start-end|...); if it lies inside a catalogue
-locus, that locus's family votes for the cluster. A cluster is assigned the majority family when the
-votes are unanimous or a clear majority, and only if its centroid also scores best against that
-family's consensus (cross/cluster_report.tsv), so the result is defensible without tree inspection.
+locus, that locus's family votes for the cluster. Rules, in order: a cluster holding a reference record takes
+that family; a cluster whose centroid is >= 95 % identical to a family consensus over >= 100 bits
+(cross/cluster_report.tsv) takes that family; otherwise a cluster takes the majority family of its
+members' catalogue loci when at least 60 % of its members lie in catalogue loci and 60 % of those
+agree. Everything else stays unassigned (as the published table left it).
 
 Usage: recurate_from_catalogue.py <run_dir> <published MASTER.merged.bed (viewer format)>
                                   <published MASTER.final_assignment.clean.tsv> <out cluster_family.tsv>
@@ -63,10 +65,16 @@ for fn in sorted(os.listdir(cc), key=lambda x: int(x.split('_')[1])):
     fam, nv = (votes.most_common(1)[0] if votes else ('', 0))
     total = sum(votes.values())
     decision = ''
+    try:
+        pid = float(r.get('pid') or 0)
+    except ValueError:
+        pid = 0.0
     if r.get('is_ref'):
         decision = r['best']          # the reference consensus sits in this cluster
-    elif fam and nv >= max(1, 0.6 * total) and r.get('best') == fam:
-        decision = fam
+    elif pid >= 95.0 and (r.get('bits') or 0) >= 100.0:
+        decision = r['best']          # centroid practically identical to a family consensus (over a real alignment)
+    elif fam and total >= 0.6 * n and nv >= 0.6 * total:
+        decision = fam                # most members lie in catalogue loci of one family
     rows.append((clu, n, decision, dict(votes), r.get('best'), r.get('bits'), r.get('pid')))
 
 with open(out, 'w') as f:

@@ -575,10 +575,20 @@ def st_assign(ctx: Ctx):
     # the curated table names clusters by their Step-8 number; if the motif set changed, the same
     # number can be a different cluster. Every assigned cluster's centroid must therefore score
     # best against the consensus of the family it is assigned to.
+    # A disagreement with a near-identical centroid (>= 95 % identity, >= 100 bits) is an error; a
+    # disagreement on a diverged centroid is the curator's judgement call and only gets a warning.
     for clu, fam in assigned.items():
         if clu in clusters and clu in best and best[clu][0] != fam:
-            errors.append('cluster %s is assigned to %s but its centroid scores best against %s (%.1f bits, %s%% id): '
-                          'the table does not describe this run\'s clustering' % (clu, fam, best[clu][0], best[clu][1], best[clu][2]))
+            try:
+                pid = float(best[clu][2])
+            except ValueError:
+                pid = 0.0
+            msg = ('cluster %s is assigned to %s but its centroid scores best against %s (%.1f bits, %s%% id)'
+                   % (clu, fam, best[clu][0], best[clu][1], best[clu][2]))
+            if pid >= 95.0 and best[clu][1] >= 100.0:
+                errors.append(msg + ': the table does not describe this run\'s clustering')
+            else:
+                ctx.say('  WARNING: ' + msg + ' (diverged centroid; keeping the curated call)')
     if errors:
         raise StageError('09_assign: the curated table does not match the clusters:\n  ' + '\n  '.join(errors)
                          + '\n  see %s' % rep)

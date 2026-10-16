@@ -21,7 +21,10 @@ families:
   CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#2ca02c"}
   CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#d62728"}
 
-family_assignment: ../satpipe/stages/02_seed_expansion_scan/cluster_family.tsv
+# The published cluster numbers do not describe this run's Step-8 clustering (the Step-4 coverage fix
+# changed 17 of 7,546 motifs, so vsearch numbered the clusters differently; stage 09 detects this).
+# The table below was transferred from the published catalogue with tests/darevskia/recurate_from_catalogue.py.
+family_assignment: ../ref/darevskia/cluster_family_therioserver_2026-10-16.tsv
 manual_loci: ../ref/darevskia/manual_loci.bed
 
 expansion: {jobs: 32}

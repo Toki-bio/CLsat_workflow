@@ -1,0 +1,22 @@
+# cluster -> family, re-derived from the published catalogue (majority family of the catalogue loci the
+# cluster members lie in, confirmed by the centroid's best consensus hit); see tests/darevskia/recurate_from_catalogue.py
+# cluster	family	note
+0	CLsat3	size=42 votes={'CLsat1': 2, 'CLsat3': 40} centroid_best=CLsat3 300.9 bits 99.27%
+6	CLsat4	size=27 votes={'CLsat4': 6, 'CLsat1': 21} centroid_best=CLsat4 211.3 bits 98.58%
+9	CLsat1	size=56 votes={'CLsat1': 51, 'CLsat2': 4} centroid_best=CLsat1 161.4 bits 92.53%
+58	CLsat3	size=41 votes={'CLsat3': 36, 'CLsat1': 4} centroid_best=CLsat3 193.2 bits 100.00%
+59	CLsat1	size=221 votes={'CLsat1': 212, 'CLsat3': 8, 'CLsat2': 1} centroid_best=CLsat1 152.2 bits 99.31%
+60	CLsat1	size=203 votes={'CLsat1': 160, 'CLsat3': 43} centroid_best=CLsat1 166.6 bits 99.31%
+61	CLsat3	size=2 votes={'CLsat3': 2} centroid_best=CLsat4 89.1 bits 76.30%
+62	CLsat3	size=3 votes={'CLsat3': 3} centroid_best=CLsat4 141.5 bits 90.44%
+63	CLsat3	size=4 votes={'CLsat3': 4} centroid_best=CLsat3 121.8 bits 88.89%
+64	CLsat3	size=1 votes={'CLsat3': 1} centroid_best=CLsat4 109.9 bits 84.56%
+65	CLsat1	size=146 votes={'CLsat1': 146} centroid_best=CLsat1 145.0 bits 91.03%
+66	CLsat1	size=13 votes={'CLsat1': 13} centroid_best=CLsat1 157.8 bits 90.21%
+67	CLsat1	size=96 votes={'CLsat1': 96} centroid_best=CLsat1 142.8 bits 91.03%
+68	CLsat1	size=5 votes={'CLsat1': 5} centroid_best=CLsat1 131.2 bits 90.34%
+69	CLsat3	size=9 votes={'CLsat3': 7, 'CLsat1': 2} centroid_best=CLsat3 142.3 bits 88.36%
+70	CLsat2	size=158 votes={'CLsat2': 155, 'CLsat1': 2} centroid_best=CLsat2 177.2 bits 100.00%
+71	CLsat2	size=131 votes={'CLsat2': 129, 'CLsat1': 2} centroid_best=CLsat2 152.0 bits 100.00%
+90	CLsat1	size=9 votes={'CLsat1': 9} centroid_best=CLsat1 120.7 bits 100.00%
+113	CLsat4	size=18 votes={'CLsat4': 13, 'CLsat1': 4} centroid_best=CLsat4 153.4 bits 100.00%
