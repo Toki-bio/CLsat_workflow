@@ -903,6 +903,47 @@ st_candidates.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', 'MASTER.me
                                   {'min_bits': ctx.cfg.data['expansion']['min_bits'], 'flank': ctx.cfg.data['orthology']['flank_bp']})
 
 
+@stage('21_anchor')
+def st_anchor(ctx: Ctx):
+    """Rotate every written consensus (families, sub-subfamilies) into the anchor frame; fail if one cannot be placed."""
+    from . import anchor as A
+    cfg = ctx.cfg.data
+    ac = cfg.get('anchor') or {}
+    fams = ctx.cfg.families
+    afam = ac.get('family') or next(iter(fams))
+    motif, mm, mi = ac.get('motif') or '', ac.get('max_motif_mismatch', 1), ac.get('min_identity', 0.6)
+    frame = A.anchor_frame(''.join(A.read_fasta(fams[afam]['consensus']).values()), motif, mm)
+    out = ctx.d('anchored')
+    fam_recs = {f: ''.join(A.read_fasta(fd['consensus']).values()) for f, fd in fams.items()}
+    sets = {'families': fam_recs}
+    cons = (cfg.get('subfamily') or {}).get('consensuses')
+    if cons and os.path.exists(cons):
+        sub = {}
+        for fp in A.fasta_files(cons):
+            sub.update(A.read_fasta(fp))
+        sets['subfamilies'] = sub
+    rows = []
+    for label, recs in sets.items():
+        rot, r = A.anchor_records(recs, frame, motif, mm, mi)
+        A.write_fasta(os.path.join(out, label + '.anchored.fa'), rot)
+        rows += [(label,) + x for x in r]
+    with open(os.path.join(out, 'anchor_report.tsv'), 'w') as f:
+        f.write('set\tname\tlength\tshift\tidentity_pct\tstart\tstatus\n')
+        for x in rows:
+            f.write('\t'.join(str(v) for v in x) + '\n')
+    A.write_fasta(os.path.join(out, 'anchor_frame.fa'), {afam + '_anchor': frame})
+    ctx.manifest['anchor'] = {'family': afam, 'motif': motif, 'frame_start': frame[:20], 'records': len(rows),
+                              'rotated': sum(1 for x in rows if x[3] not in (0, '0'))}
+    ctx.say('  anchor %s (%s...): %d consensus records in frame, %d needed rotation'
+            % (afam, frame[:12], len(rows), ctx.manifest['anchor']['rotated']))
+    return [os.path.join(out, n) for n in ('families.anchored.fa', 'anchor_report.tsv', 'anchor_frame.fa')]
+
+
+st_anchor.plan = lambda ctx: ([fd['consensus'] for fd in ctx.cfg.families.values()]
+                              + ([(ctx.cfg.data.get('subfamily') or {}).get('consensuses')] if (ctx.cfg.data.get('subfamily') or {}).get('consensuses') and os.path.exists(ctx.cfg.data['subfamily']['consensuses']) else []),
+                              {'anchor': ctx.cfg.data.get('anchor')})
+
+
 # ----------------------------------------------------------------------------- driver
 
 def stage_ids() -> list:

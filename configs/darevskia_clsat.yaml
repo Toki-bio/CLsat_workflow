@@ -99,6 +99,9 @@ finalisation:
 # L541 (mix, JAWWNH010000226.1:1-43,510) was added by hand; see ref/darevskia/manual_loci.bed
 manual_loci: ../ref/darevskia/manual_loci.bed
 
+# Frame of every written consensus: CLsat1 rotated to start AAAGAAG (manuscript Methods 3.4); stage 21 enforces it
+anchor: {family: CLsat1, motif: AAAGAAG}
+
 tools:
   bin_dir: /staging/conda/envs/bioinfo/bin
   trf: /staging/miniconda3/bin/trf

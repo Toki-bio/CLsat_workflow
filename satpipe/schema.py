@@ -156,6 +156,20 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "edge_tol": F("int", default=50, min=0, doc="EDGE_TOL used by edge refinement."),
         "rearbitrate": F("bool", default=True, doc="Re-run stage 14 on the finalised catalogue."),
     }),
+    "anchor": F("block", doc="Anchor phasing (stage 21): every consensus the run writes is rotated into the frame of "
+                             "the anchor family, so figures, alignments and deposited FASTA share one start.", fields={
+        "family": F("str", pattern=NAME_PATTERN,
+                    doc="Family whose consensus defines the frame. Default: the first family under `families`."),
+        "motif": F("str", default="", pattern=r"^[ACGTacgt]*$",
+                   doc="Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor "
+                       "family's consensus is used exactly as given."),
+        "max_motif_mismatch": F("int", default=1, min=0,
+                                doc="Mismatches tolerated between the motif and the start of a rotated sequence "
+                                    "(diverged families, e.g. CLsat4, may differ by one base)."),
+        "min_identity": F("float", default=0.6, min=0.0, max=1.0,
+                          doc="Minimum identity of the local alignment to the anchor for a sequence to be placed; "
+                              "below it the stage fails instead of guessing a frame."),
+    }),
     "manual_loci": F("path",
                      doc="Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are "
                          "tagged MANUAL in provenance and listed in the manifest."),

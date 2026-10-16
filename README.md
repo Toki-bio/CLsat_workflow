@@ -24,7 +24,7 @@ original directory names; `git log --follow` gives their history.
 | stage scripts | in `satpipe/stages/`, parameterised: inputs from arguments and small tables (`genomes.tsv`, `families.tsv`, `members.tsv`), parameters from environment variables with the published values as defaults; no server path, species code, family name or monomer length in code ([PROVENANCE.md](PROVENANCE.md)); equivalence with the original scripts verified on a synthetic project (`tests/toy/`) |
 | `config.yaml` schema | done: `satpipe/schema.py`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
 | `satpipe check` | done: schema, cross-key checks, input files, external tools with versions |
-| `satpipe run` | done: 20 stages from TRF to flank orthology, resumable (DONE markers), `manifest.json`; `--from/--to/--only/--force` |
+| `satpipe run` | done: 21 stages from TRF to anchor phasing, resumable (DONE markers), `manifest.json`; `--from/--to/--only/--force` |
 | `satpipe viewer` | done: assembles `<run>/viewer/` (data files + `viewer_config.json` + the config-driven page) |
 | Darevskia regression | running on therioserver from the six GenBank assemblies (`configs/darevskia_clsat_therioserver.yaml`); see HANDOFF.md progress log |
 | second test case | Amazon molly (`tests/molly/run_molly.sh`), running |
@@ -108,3 +108,7 @@ ssearch36 `-m 8C` coordinates are 1-based; Δ = assigned-family bits − stronge
 `LC_ALL=C` everywhere a sort decides locus numbering; `gawk` required; never change a default
 that alters the published catalogue (`short_segments: drop`, plus-strand canonicalisation,
 coarse-probe test, scaffold-end handling) — add an option with the published value as default.
+
+## Anchor phasing (stage 21)
+
+A circular monomer has no natural start, so every consensus the run writes (families and sub-subfamilies) is rotated into the frame of an anchor family (`anchor:` block of the config; Darevskia: CLsat1 starting AAAGAAG). The stage fails if a sequence cannot be placed on the anchor or does not start at the motif. `satpipe anchor CONFIG file.fa [...]` rotates other FASTA files into the same frame, and `satpipe anchor --check CONFIG file.fa` verifies files or alignments (gaps ignored) before deposit.

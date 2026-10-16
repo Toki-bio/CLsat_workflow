@@ -95,6 +95,43 @@ def cmd_run(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_anchor(a: argparse.Namespace) -> int:
+    from . import anchor as A
+    rep = run_check(a.config, do_files=True, do_tools=False)
+    if rep.failed:
+        print(rep.to_text(), file=sys.stderr)
+        return 1
+    d = rep.config.data
+    ac = d.get("anchor") or {}
+    fams = d["families"]
+    afam = ac.get("family") or next(iter(fams))
+    motif, mm, mi = ac.get("motif") or "", ac.get("max_motif_mismatch", 1), ac.get("min_identity", 0.6)
+    try:
+        frame = A.anchor_frame("".join(A.read_fasta(fams[afam]["consensus"]).values()), motif, mm)
+        bad = 0
+        for path in a.fasta:
+            for fp in A.fasta_files(path):
+                recs = A.read_fasta(fp)
+                if a.check:
+                    probs = A.verify_records(recs, frame, motif, mm, mi)
+                    for p in probs:
+                        print(f"{fp}: {p}", file=sys.stderr)
+                    bad += len(probs)
+                    print(f"{fp}: {len(recs) - len(probs)}/{len(recs)} records in the anchor frame")
+                else:
+                    if any("-" in s for s in recs.values()):
+                        print(f"{fp}: gapped sequences (an alignment): rotate the unaligned sequences and re-align", file=sys.stderr)
+                        return 1
+                    rot, _ = A.anchor_records(recs, frame, motif, mm, mi)
+                    out = a.out if (a.out and len(a.fasta) == 1 and not __import__("os").path.isdir(path)) else fp + ".anchored.fa"
+                    A.write_fasta(out, rot)
+                    print(f"{fp} -> {out}")
+    except A.AnchorError as e:
+        print(f"satpipe anchor: {e}", file=sys.stderr)
+        return 1
+    return 1 if bad else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="satpipe", description="Reusable satellite-DNA locus pipeline.")
     p.add_argument("--version", action="version", version=f"satpipe {__version__}")
@@ -131,6 +168,13 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--viewer-html", help="index.html to copy in [the copy vendored with satpipe]")
     v.add_argument("--no-flank-scan", action="store_true", help="skip the +-5 kb flank background scan (needs ssearch36)")
     v.set_defaults(func=cmd_viewer)
+
+    n = sp.add_parser("anchor", help="rotate FASTA files into the run's anchor frame, or verify that they are in it")
+    n.add_argument("config")
+    n.add_argument("fasta", nargs="+", help="FASTA file(s) or directories of them")
+    n.add_argument("--check", action="store_true", help="only verify; exit 1 if any record is out of frame (works on alignments)")
+    n.add_argument("-o", "--out", help="output file (single input only) [<input>.anchored.fa]")
+    n.set_defaults(func=cmd_anchor)
     return p
 
 

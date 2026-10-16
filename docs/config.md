@@ -59,6 +59,10 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `finalisation.min_piece_bp` | int |  | `20000` | Pieces shorter than this are no longer bisected; if TRF still times out on them they are listed in unscanned.tsv and left out (never imputed). |
 | `finalisation.edge_tol` | int |  | `50` | EDGE_TOL used by edge refinement. |
 | `finalisation.rearbitrate` | bool |  | `True` | Re-run stage 14 on the finalised catalogue. |
+| `anchor.family` | str |  |  | Family whose consensus defines the frame. Default: the first family under `families`. |
+| `anchor.motif` | str |  | `` | Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor family's consensus is used exactly as given. |
+| `anchor.max_motif_mismatch` | int |  | `1` | Mismatches tolerated between the motif and the start of a rotated sequence (diverged families, e.g. CLsat4, may differ by one base). |
+| `anchor.min_identity` | float |  | `0.6` | Minimum identity of the local alignment to the anchor for a sequence to be placed; below it the stage fails instead of guessing a frame. |
 | `manual_loci` | path |  |  | Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are tagged MANUAL in provenance and listed in the manifest. |
 | `tools` | map -> path |  |  | Optional executable overrides: tool name -> path. The special key `bin_dir` is a directory searched before PATH for every tool. |
 | `viewer.title` | str |  |  | Page title. |

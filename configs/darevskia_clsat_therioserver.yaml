@@ -44,6 +44,9 @@ subfamily:
     CLsat4: [CLsat4]
   consensuses: /home/toki/satpipe_darevskia/subx   # absent here; stage 18 writes an empty table until it is copied from DRAGEN
 
+# Frame of every written consensus: CLsat1 rotated to start AAAGAAG (manuscript Methods 3.4); stage 21 enforces it
+anchor: {family: CLsat1, motif: AAAGAAG}
+
 tools:
   bin_dir: /home/toki/miniforge3/envs/sinederella/bin
 
