@@ -211,3 +211,8 @@ Decisions the owner must make before or during the refactor:
   `family_assignment` table written after inspecting the Step-8 centroids, exactly as for Darevskia.
 - [ ] What to do with L186 in the manuscript (seed family retained; contradiction flagged).
 - [ ] Whether `molly/` becomes its own repository now or after submission.
+
+## Open item from the CLsat revision session (2026-10-16)
+- Anchor phasing must be a mandatory automatic stage: rotate every written consensus/alignment (families, sub-subfamilies, molly) to the configured anchor motif (manuscript Methods 3.4: doubled consensus vs anchor, water, AAAGAAG check) and fail if any output does not start at the anchor.
+- Do NOT deposit C:\work\CLsat\manuscript\subsubfamily_consensuses.fasta as is (36 letters out of frame); use fig1b_rotated.fasta or re-rotate by 36.
+- Molly alignments in CLsat-viewer molly/alignments/ were made without an anchor step (in phase within families, arbitrary between).
