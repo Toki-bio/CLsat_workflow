@@ -163,6 +163,10 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "motif": F("str", default="", pattern=r"^[ACGTacgt]*$",
                    doc="Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor "
                        "family's consensus is used exactly as given."),
+        "independent": F("bool", default=False,
+                         doc="Families are unrelated (no common frame exists, e.g. different satellites of one genome): "
+                             "each family consensus is its own frame and only sub-subfamilies are rotated, onto their "
+                             "family. Default false: all families must be placeable on the anchor."),
         "max_motif_mismatch": F("int", default=1, min=0,
                                 doc="Mismatches tolerated between the motif and the start of a rotated sequence "
                                     "(diverged families, e.g. CLsat4, may differ by one base)."),

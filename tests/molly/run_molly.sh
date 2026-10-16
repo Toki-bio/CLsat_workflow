@@ -52,6 +52,7 @@ families:
 family_assignment: $W/ref/cluster_family.tsv
 expansion: {jobs: $JOBS}
 finalisation: {large_scaffold_bp: 80000000}
+anchor: {independent: true}   # three unrelated satellites: no common frame exists
 tools: {bin_dir: $(dirname "$(command -v samtools)")}
 viewer:
   title: "Satellite loci in the two Amazon molly haplotype assemblies (2021)"

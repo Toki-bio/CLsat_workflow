@@ -61,6 +61,7 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `finalisation.rearbitrate` | bool |  | `True` | Re-run stage 14 on the finalised catalogue. |
 | `anchor.family` | str |  |  | Family whose consensus defines the frame. Default: the first family under `families`. |
 | `anchor.motif` | str |  | `` | Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor family's consensus is used exactly as given. |
+| `anchor.independent` | bool |  | `False` | Families are unrelated (no common frame exists, e.g. different satellites of one genome): each family consensus is its own frame and only sub-subfamilies are rotated, onto their family. Default false: all families must be placeable on the anchor. |
 | `anchor.max_motif_mismatch` | int |  | `1` | Mismatches tolerated between the motif and the start of a rotated sequence (diverged families, e.g. CLsat4, may differ by one base). |
 | `anchor.min_identity` | float |  | `0.6` | Minimum identity of the local alignment to the anchor for a sequence to be placed; below it the stage fails instead of guessing a frame. |
 | `manual_loci` | path |  |  | Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are tagged MANUAL in provenance and listed in the manifest. |

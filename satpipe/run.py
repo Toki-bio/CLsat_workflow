@@ -912,21 +912,35 @@ def st_anchor(ctx: Ctx):
     fams = ctx.cfg.families
     afam = ac.get('family') or next(iter(fams))
     motif, mm, mi = ac.get('motif') or '', ac.get('max_motif_mismatch', 1), ac.get('min_identity', 0.6)
-    frame = A.anchor_frame(''.join(A.read_fasta(fams[afam]['consensus']).values()), motif, mm)
-    out = ctx.d('anchored')
     fam_recs = {f: ''.join(A.read_fasta(fd['consensus']).values()) for f, fd in fams.items()}
-    sets = {'families': fam_recs}
+    frame = A.anchor_frame(fam_recs[afam], motif, mm)
+    out = ctx.d('anchored')
+    indep = bool(ac.get('independent'))
     cons = (cfg.get('subfamily') or {}).get('consensuses')
+    sub = {}
     if cons and os.path.exists(cons):
-        sub = {}
         for fp in A.fasta_files(cons):
             sub.update(A.read_fasta(fp))
-        sets['subfamilies'] = sub
-    rows = []
-    for label, recs in sets.items():
-        rot, r = A.anchor_records(recs, frame, motif, mm, mi)
-        A.write_fasta(os.path.join(out, label + '.anchored.fa'), rot)
-        rows += [(label,) + x for x in r]
+    rows, fam_out, sub_out = [], {}, {}
+    if indep:
+        fam_out = {f: A.clean(s) for f, s in fam_recs.items()}
+        rows += [('families', f, len(s), 0, '', s[:7], 'own frame') for f, s in fam_out.items()]
+        members = (cfg.get('subfamily') or {}).get('members') or {}
+        for fam, subs in members.items():
+            part = {n: sub[n] for n in subs if n in sub}
+            if part:
+                rot, r = A.anchor_records(part, fam_out[fam], '', mm, mi)
+                sub_out.update(rot)
+                rows += [('subfamilies',) + x for x in r]
+    else:
+        fam_out, r = A.anchor_records(fam_recs, frame, motif, mm, mi)
+        rows += [('families',) + x for x in r]
+        if sub:
+            sub_out, r = A.anchor_records(sub, frame, motif, mm, mi)
+            rows += [('subfamilies',) + x for x in r]
+    A.write_fasta(os.path.join(out, 'families.anchored.fa'), fam_out)
+    if sub_out:
+        A.write_fasta(os.path.join(out, 'subfamilies.anchored.fa'), sub_out)
     with open(os.path.join(out, 'anchor_report.tsv'), 'w') as f:
         f.write('set\tname\tlength\tshift\tidentity_pct\tstart\tstatus\n')
         for x in rows:
