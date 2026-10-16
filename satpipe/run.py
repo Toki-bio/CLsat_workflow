@@ -572,6 +572,13 @@ def st_assign(ctx: Ctx):
             f.write('%s\t%d\t%s\t%s\t%s\t%s\t%.1f\t%s\n' % (clu, sizes[clu], assigned.get(clu, ''), c,
                                                         'yes' if c in refs else 'no', b[0], b[1], b[2]))
     ctx.say('  cluster report: %s (%d clusters, %d assigned)' % (rep, len(clusters), len(assigned)))
+    # the curated table names clusters by their Step-8 number; if the motif set changed, the same
+    # number can be a different cluster. Every assigned cluster's centroid must therefore score
+    # best against the consensus of the family it is assigned to.
+    for clu, fam in assigned.items():
+        if clu in clusters and clu in best and best[clu][0] != fam:
+            errors.append('cluster %s is assigned to %s but its centroid scores best against %s (%.1f bits, %s%% id): '
+                          'the table does not describe this run\'s clustering' % (clu, fam, best[clu][0], best[clu][1], best[clu][2]))
     if errors:
         raise StageError('09_assign: the curated table does not match the clusters:\n  ' + '\n  '.join(errors)
                          + '\n  see %s' % rep)
