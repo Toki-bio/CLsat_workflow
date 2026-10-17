@@ -1,0 +1,43 @@
+# CLsat revision (Mobile DNA, 2026-10): final species panel, author's decision 2026-10-17.
+# valentini and mixta: the Animals-paper assemblies before the 300 kb cut ("Drafts", same animals 218 and 80);
+# D. unisexualis 224 and D. armeniaca: our parent-split (trio) hifiasm assemblies, one copy per parent.
+# Families and parameters as in the published Darevskia run; the cluster -> family table is drafted by
+# tests/darevskia/recurate_rules (centroid >= 95 % to a family consensus over >= 100 bits, else majority of the
+# read-checked loci its members lie in, 60 % / 60 %) and must be approved by the author before stage 09.
+run_name: darevskia_final_panel
+out_dir: /scratch/sk4386/satpipe_final/run
+genomes:
+  val:  /scratch/sk4386/ortho_final/genomes/D_val_hifi_reads_l10_Q15_2x_aseembly.bp.p_ctg.fasta
+  mix:  /scratch/sk4386/ortho_final/genomes/EIMB_D_mixta_hifiasm_0-25_Pilon_cleaned.fasta
+  unif: /scratch/sk4386/darasm/asm/uni_trio/uni.dip.hap1.p_ctg.fa
+  unim: /scratch/sk4386/darasm/asm/uni_trio/uni.dip.hap2.p_ctg.fa
+  armf: /scratch/sk4386/darasm/asm/arm_trio/arm.dip.hap1.p_ctg.fa
+  armm: /scratch/sk4386/darasm/asm/arm_trio/arm.dip.hap2.p_ctg.fa
+families:
+  CLsat1: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat1.cons.fa, mono: 146, colour: "#1f77b4"}
+  CLsat2: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat2.cons.fa, mono: 145, colour: "#ff7f0e"}
+  CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#2ca02c"}
+  CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#d62728"}
+family_assignment: /scratch/sk4386/satpipe_final/cluster_family_final_panel.tsv
+expansion: {jobs: 24}
+finalisation:
+  large_scaffold_bp: 80000000
+  trf_timeout: 600
+  min_piece_bp: 20000
+subfamily:
+  members:
+    CLsat1: [CLsat1.1, CLsat1.2, CLsat1.3, CLsat1.4, CLsat1.5]
+    CLsat2: [CLsat2]
+    CLsat3: [CLsat3.1, CLsat3.2]
+    CLsat4: [CLsat4]
+  consensuses: /scratch/sk4386/satpipe_final/fig1b_rotated.fasta   # the 9 anchored sub-subfamily consensuses (manuscript fig1b_rotated.fasta)
+anchor: {family: CLsat1, motif: AAAGAAG}
+viewer:
+  title: "CLsat loci in Darevskia genomes (revision panel)"
+  species_names:
+    val: D. valentini (218, Draft)
+    mix: D. mixta (80, Draft)
+    unif: D. unisexualis 224, father (valentini) copy
+    unim: D. unisexualis 224, mother (nairensis) copy
+    armf: D. armeniaca, father (valentini) copy
+    armm: D. armeniaca, mother (mixta) copy
