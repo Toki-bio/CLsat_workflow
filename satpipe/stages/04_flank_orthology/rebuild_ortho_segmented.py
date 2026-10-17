@@ -122,15 +122,12 @@ def overlaps_other(sp, scf, fs, fe, self_i):
     return False
 
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import flank_rules  # noqa: E402  (shared truncated / telomeric / lowcomplex / unique rules)
+
+
 def classify(seq):
-    if len(seq) < MIN_ALN:
-        return 'truncated'
-    fu = seq.upper()
-    if max(fu.count('CCCTAA'), fu.count('TTAGGG')) >= 8:
-        return 'telomeric'
-    if len(set(fu[i:i+4] for i in range(len(fu)-3))) / max(1, len(fu)-3) < 0.35:
-        return 'lowcomplex'
-    return 'unique'
+    return flank_rules.classify(seq, MIN_ALN)
 
 
 # ---- 2/3. flanks with overlap guard + classification ----
