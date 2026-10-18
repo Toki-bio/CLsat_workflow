@@ -98,6 +98,23 @@ def test_header_rewrite():
     assert out == 'armf|h1tg000102l:2989387-3590591|len=146|copies=4119.4|locuslen=601205|monomerized=2:292:0.99'
 
 
+def test_seeds_of_a_bridging_trf_interval():
+    # the real case: one period-292 TRF row over 387 kb spanning two CLsat1 arrays and the 4.75 kb gap between them
+    h = 'unm|JAWDKO010000018.1:156359-543662|len=146|copies=2649.6|locuslen=387304|monomerized=2:292:1.00'
+    s, e = m3b.seed_headers(h, 146, 10)
+    assert s == 'unm|JAWDKO010000018.1:156359-157818|len=146|copies=2649.6|locuslen=1460|monomerized=2:292:1.00|seed=start'
+    assert e == 'unm|JAWDKO010000018.1:542203-543662|len=146|copies=2649.6|locuslen=1460|monomerized=2:292:1.00|seed=end'
+    # no seed reaches into the gap (270231-274981)
+    for x in (s, e):
+        a, b = (int(v) for v in x.split('|')[1].split(':')[1].split('-'))
+        assert b < 270231 or a > 274981
+
+
+def test_short_interval_keeps_one_seed():
+    h = 'sp|scf:1001-3000|len=146|copies=13.7|locuslen=2000|monomerized=2:292:0.99'
+    assert m3b.seed_headers(h, 146, 10) == [h]
+
+
 def test_file_round_trip(tmp_path):
     r = random.Random(7)
     u = rnd(146, r)
@@ -109,9 +126,13 @@ def test_file_round_trip(tmp_path):
     subprocess.run([sys.executable, SCRIPT, str(fa)], check=True, capture_output=True,
                    env=dict(os.environ, PERIOD_MIN='80'))
     lines = fa.read_text().split('\n')
+    # the 5000-letter TRF interval is longer than 2 x 10 units: one start seed and one end seed, same unit
     assert '|monomerized=2:%d:' % len(dimer) in lines[0] and '|len=%d|' % unit_len in lines[0] and '|copies=34.2|' in lines[0]
-    assert lines[1] == dimer[:unit_len]
-    assert lines[2] == '>sp|scf2:1-3000|len=146|copies=20|locuslen=3000'
+    w = 10 * unit_len
+    assert lines[0].startswith('>sp|scf1:1-%d|' % w) and lines[0].endswith('|seed=start')
+    assert lines[2].startswith('>sp|scf1:%d-5000|' % (5000 - w + 1)) and lines[2].endswith('|seed=end')
+    assert lines[1] == lines[3] == dimer[:unit_len]
+    assert lines[4] == '>sp|scf2:1-3000|len=146|copies=20|locuslen=3000'
     assert (tmp_path / 'sp.fa.before_monomerize').exists()
     rep = (tmp_path / 'sp.fa.monomerize.tsv').read_text().strip().split('\n')
     assert len(rep) == 2 and rep[1].split('\t')[2] == '2'

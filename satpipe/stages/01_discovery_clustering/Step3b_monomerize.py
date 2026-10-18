@@ -11,11 +11,14 @@ motif with itself rotated by round(len / k) letters, globally, with indels allow
 (unit edit distance). If the identity is >= MIN_ID, the motif is k units. The k with the highest identity wins;
 the motif is replaced by its first round(len / k) letters. No consensus, family or external tool is used.
 
-The header keeps the locus coordinates; len= becomes the unit length, copies= is multiplied by k, and
-|monomerized=k:<old period>:<identity> is appended. Every change is written to <out>.monomerize.tsv.
+len= becomes the unit length, copies= is multiplied by k, and |monomerized=k:<old period>:<identity> is appended.
+The TRF interval of such a motif is not trusted as an array outline (a multi-unit TRF row can bridge separate arrays
+and the DNA between them): if it is longer than 2 x MONOMER_SEED_UNITS units, the motif is written twice, as a start
+seed and an end seed of MONOMER_SEED_UNITS units each (|seed=start, |seed=end); seed expansion then finds the real
+array ends. Every change is written to <out>.monomerize.tsv.
 
 Usage: Step3b_monomerize.py <motifs.fa> [out.fa]   (default: rewrite in place, original kept as .before_monomerize)
-Environment (defaults):  PERIOD_MIN [80]  MONOMER_MIN_ID [0.70]  MONOMER_BAND [12]
+Environment (defaults):  PERIOD_MIN [80]  MONOMER_MIN_ID [0.70]  MONOMER_BAND [12]  MONOMER_SEED_UNITS [10]
 """
 import os
 import re
@@ -70,6 +73,29 @@ def monomerize_header(h, k, unit_len, old_len, idv):
     return h + '|monomerized=%d:%d:%.2f' % (k, old_len, idv)
 
 
+COORD = re.compile(r'([A-Za-z0-9_.-]+):([0-9]+)-([0-9]+)')
+
+
+def seed_headers(h, unit_len, seed_units):
+    """A motif TRF reported at a multiple of its unit can span several arrays and the non-satellite DNA between them
+    (seen in Darevskia: one period-292 row over 387 kb bridged a 4.75 kb gap between two CLsat1 arrays). Its TRF
+    interval is therefore not used as a seed outline: it becomes a start seed and an end seed of seed_units units
+    each, and seed expansion finds the real array ends from there. Short intervals keep one seed."""
+    m = COORD.search(h)
+    if not m:
+        return [h]
+    s, e = int(m.group(2)), int(m.group(3))
+    w = seed_units * unit_len
+    if e - s + 1 <= 2 * w:
+        return [h]
+    out = []
+    for tag, a, b in (('start', s, s + w - 1), ('end', e - w + 1, e)):
+        x = h[:m.start(2)] + '%d-%d' % (a, b) + h[m.end(3):]
+        x = re.sub(r'\|locuslen=[^|]*', '|locuslen=%d' % (b - a + 1), x, count=1)
+        out.append(x + '|seed=%s' % tag)
+    return out
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -78,6 +104,7 @@ def main():
     period_min = int(os.environ.get('PERIOD_MIN', 80))
     min_id = float(os.environ.get('MONOMER_MIN_ID', 0.70))
     band = int(os.environ.get('MONOMER_BAND', 12))
+    seed_units = int(os.environ.get('MONOMER_SEED_UNITS', 10))
     recs, h, buf = [], None, []
     for line in open(src):
         line = line.rstrip('\n')
@@ -98,7 +125,9 @@ def main():
             if k > 1:
                 unit = s[:round(len(s) / k)]
                 changed.append((h, len(s), k, len(unit), idv))
-                h, s = monomerize_header(h, k, len(unit), len(s), idv), unit
+                for hh in seed_headers(monomerize_header(h, k, len(unit), len(s), idv), len(unit), seed_units):
+                    f.write('>%s\n%s\n' % (hh, unit))
+                continue
             f.write('>%s\n%s\n' % (h, s))
     with open(out + '.monomerize.tsv', 'w') as f:
         f.write('header\tmotif_len\tunits\tunit_len\tself_identity\n')
