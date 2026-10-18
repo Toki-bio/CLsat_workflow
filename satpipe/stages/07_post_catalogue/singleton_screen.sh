@@ -51,7 +51,13 @@ for d in "$CB"/*/; do
   done
   printf '%-4s %4d singleton loci\n' "$a" "$n"
 done
-echo "total singleton loci: $(grep -c '^>' singletons.fa)"
+echo "total singleton loci: $(grep -c '^>' singletons.fa || true)"
+if [ ! -s singletons.fa ]; then
+  # nothing to screen (e.g. strand=both clusters every locus): empty results, not a failure
+  : > sing_vs_ref.tsv; : > sing_best.tsv
+  echo "no singleton loci: nothing to screen"
+  exit 0
+fi
 
 # --- 2. double the consensuses so the search is phase-insensitive ------------
 awk '/^>/{if(s)print h"\n"s s; h=$0; s=""; next}{s=s$0}END{print h"\n"s s}' \
