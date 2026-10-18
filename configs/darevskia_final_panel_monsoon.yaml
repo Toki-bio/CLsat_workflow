@@ -41,3 +41,6 @@ viewer:
     unim: D. unisexualis 224, mother (nairensis) copy
     armf: D. armeniaca, father (valentini) copy
     armm: D. armeniaca, mother (mixta) copy
+
+# author decisions 2026-10-18: strand both (decision 6); Step 3b monomerize is on by default
+discovery: {strand: both, monomerize: true}
