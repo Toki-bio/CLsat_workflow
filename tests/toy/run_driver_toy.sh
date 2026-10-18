@@ -30,6 +30,7 @@ subfamily:
   consensuses: $TOY/subx
   members: {CLsat1: [CLsat1.1, CLsat1.2], CLsat2: [CLsat2], CLsat3: [CLsat3.1, CLsat3.2], CLsat4: [CLsat4]}
 expansion: {jobs: ${JOBS:-8}}
+discovery: {monomerize: ${MONOMERIZE:-true}, strand: ${STRAND:-plus}}
 finalisation: {large_scaffold_bp: ${LARGE:-50000000}}
 EOF
 if [ -n "$EQ" ] && [ -s "$EQ/cluster_family.tsv" ]; then
