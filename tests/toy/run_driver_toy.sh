@@ -9,7 +9,7 @@ REPO="$(cd "${1:?repo_dir}" && pwd)"; W="${2:?work_dir}"; EQ="${3:-}"
 mkdir -p "$W"; W="$(cd "$W" && pwd)"
 export LC_ALL=C
 TOY="$W/toy"
-python3 "$REPO/tests/toy/make_toy.py" "$TOY" "$REPO/satpipe/stages/02_seed_expansion_scan/consensus" --seed "${SEED:-7}" --size "${SIZE:-1200000}"
+python3 "$REPO/tests/toy/make_toy.py" "$TOY" "$REPO/satpipe/stages/02_seed_expansion_scan/consensus" --seed "${SEED:-7}" --size "${SIZE:-1200000}" ${DIMER:+--dimer}
 # curated table: the harness derives it from the Step-8 .uc; here we take it from the equivalence run if present,
 # else run the discovery stages first and derive it the same way
 TAB="$W/cluster_family.tsv"

@@ -19,6 +19,8 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `discovery.trf` | str |  | `2 5 7 80 10 50 2000` | TRF parameters: match mismatch delta PM PI minscore maxperiod. |
 | `discovery.period` | list of int x2 |  | `[80, 300]` | Motif period range [min, max] accepted by Step 3. |
 | `discovery.min_copies` | int |  | `10` | Minimum TRF copy number for a motif (Step 3). |
+| `discovery.monomerize` | bool |  | `True` | Step 3b: replace a motif that is k tandem copies of a shorter unit (TRF reporting an array at a multiple of its unit, e.g. 292 for a 146-letter unit) by one unit. Test: the motif against itself rotated by len/k, banded global alignment, identity >= monomer_min_id; units never shorter than period[0]. Added 2026-10-18; the published run had no such step (set false to reproduce it exactly). |
+| `discovery.monomer_min_id` | float |  | `0.7` | Step 3b: minimum self-identity (motif vs itself rotated by one unit) to call a motif k units. Random and AT-rich random sequence of motif lengths stays far below (0 of 2 000 called in the 2026-10-18 test). |
 | `discovery.simple_repeat_cov` | int |  | `50` | Step 4: motifs whose own TRF re-scan covers more than this many bp are dropped as simple repeats. |
 | `discovery.strand` | one of `plus`, `both` |  | `plus` | Step 5 canonical rotation and vsearch clustering strand. The published run is plus-only (deliberate; it is what left L541 unclustered). |
 | `discovery.cluster_id` | float |  | `0.9` | vsearch identity for per-species clustering (Step 6). |

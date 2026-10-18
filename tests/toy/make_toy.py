@@ -22,6 +22,9 @@ ap.add_argument('out')
 ap.add_argument('consensus_dir')
 ap.add_argument('--seed', type=int, default=7)
 ap.add_argument('--size', type=int, default=1200000, help='background length per genome, bp')
+ap.add_argument('--dimer', action='store_true',
+                help='also plant one 2-unit higher-order CLsat4 array per genome (TRF reports it at 232; Step 3b test). '
+                     'Off by default so the equivalence toy is unchanged.')
 a = ap.parse_args()
 random.seed(a.seed)
 os.makedirs(a.out, exist_ok=True)
@@ -81,6 +84,8 @@ for sp in plan:
             plan[sp].append(('array', fam, random.randint(12, 60), random.uniform(0.02, 0.06),
                              random.randrange(MONO[fam]), random.random() < 0.3))
     plan[sp].append(('composite',))
+    if a.dimer:
+        plan[sp].append(('dimer',))
 ortho_L = rand_seq(1500)
 ortho_R = rand_seq(1500)
 
@@ -101,6 +106,13 @@ with open(os.path.join(a.out, 'genomes.tsv'), 'w') as gt:
                 _, fam, copies, rate, phase, minus = feat
                 s = array(fam, copies, rate, phase, minus)
                 truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(s)}\tarray{"-" if minus else "+"}\t{fam}\t{copies}\n')
+                parts.append(s); pos += len(s)
+            elif feat[0] == 'dimer':
+                # a 2-unit higher-order array: CLsat4 unit A and its 4%-variant B alternate (A B A B ...), so the
+                # 232-letter pair repeats better than the 116-letter unit and TRF reports period 232 (Step 3b test)
+                A = CONS['CLsat4']; B = mutate(A, 0.04)
+                s = ''.join(mutate(A + B, 0.005) for _ in range(30))
+                truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(s)}\tdimer\tCLsat4\t60\n')
                 parts.append(s); pos += len(s)
             else:
                 s1 = array('CLsat1', 40, 0.03); s3 = array('CLsat3', 40, 0.03)

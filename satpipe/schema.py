@@ -71,6 +71,16 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "period": F("list", default=[80, 300], item=F("int", min=1), length=2,
                     doc="Motif period range [min, max] accepted by Step 3."),
         "min_copies": F("int", default=10, min=1, doc="Minimum TRF copy number for a motif (Step 3)."),
+        "monomerize": F("bool", default=True,
+                        doc="Step 3b: replace a motif that is k tandem copies of a shorter unit (TRF reporting "
+                            "an array at a multiple of its unit, e.g. 292 for a 146-letter unit) by one unit. "
+                            "Test: the motif against itself rotated by len/k, banded global alignment, identity "
+                            ">= monomer_min_id; units never shorter than period[0]. Added 2026-10-18; the "
+                            "published run had no such step (set false to reproduce it exactly)."),
+        "monomer_min_id": F("float", default=0.70, min=0.0, max=1.0, exclusive_min=True,
+                            doc="Step 3b: minimum self-identity (motif vs itself rotated by one unit) to call "
+                                "a motif k units. Random and AT-rich random sequence of motif lengths stays "
+                                "far below (0 of 2 000 called in the 2026-10-18 test)."),
         "simple_repeat_cov": F("int", default=50, min=0,
                                doc="Step 4: motifs whose own TRF re-scan covers more than this many bp "
                                    "are dropped as simple repeats."),

@@ -50,6 +50,7 @@ discovery:
   strand: plus            # deliberate; plus-only is what left L541 unclustered
   cluster_id: 0.90
   cross_cluster_id: 0.90
+  monomerize: false       # Step 3b did not exist in the published run; off so this config reproduces it exactly
 
 family_assignment: ../satpipe/stages/02_seed_expansion_scan/cluster_family.tsv
 

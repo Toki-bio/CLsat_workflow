@@ -59,3 +59,6 @@ viewer:
     unm: D. unisexualis haplotype m (unm)
     unp: D. unisexualis haplotype p (unp)
     val: D. valentini
+
+# Step 3b (monomerize) did not exist in the published run; off here so this config reproduces it exactly
+discovery: {monomerize: false}
