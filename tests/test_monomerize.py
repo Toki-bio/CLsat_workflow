@@ -110,6 +110,29 @@ def test_seeds_of_a_bridging_trf_interval():
         assert b < 270231 or a > 274981
 
 
+def test_scan_runs_splits_a_bridging_interval(tmp_path):
+    import shutil
+    if not (shutil.which('samtools') and shutil.which('ssearch36')):
+        import pytest
+        pytest.skip('needs samtools and ssearch36')
+    r = random.Random(11)
+    c = cons('CLsat1')
+    arr = lambda n: ''.join(mutate(c, r, 0.03, 0) for _ in range(n))
+    a1, gap, a2 = arr(40), rnd(4000, r), arr(50)
+    seq = rnd(3000, r) + a1 + gap + a2 + rnd(3000, r)
+    g = tmp_path / 'g.fna'
+    g.write_text('>scf\n' + seq + '\n')
+    subprocess.run(['samtools', 'faidx', str(g)], check=True)
+    s, e = 3001, 3000 + len(a1) + len(gap) + len(a2)
+    cf = os.path.join(CONS, 'CLsat1.cons.fa')
+    runs = m3b.scan_runs(str(g), 'scf', s, e, [cf])
+    assert len(runs) == 2
+    (b1, e1), (b2, e2) = runs
+    assert abs(b1 - s) <= 300 and abs(e1 - (s + len(a1) - 1)) <= 300
+    assert abs(b2 - (s + len(a1) + len(gap))) <= 300 and abs(e2 - e) <= 300
+    assert b2 - e1 > 3000          # the gap is not inside any run
+
+
 def test_short_interval_keeps_one_seed():
     h = 'sp|scf:1001-3000|len=146|copies=13.7|locuslen=2000|monomerized=2:292:0.99'
     assert m3b.seed_headers(h, 146, 10) == [h]

@@ -433,13 +433,17 @@ def st_motifs(ctx: Ctx):
         for c in ctx.codes:
             ctx.sh([sys.executable, os.path.join(ctx.scripts, '01_discovery_clustering/Step3b_monomerize.py'),
                     os.path.join(m, c + '.fa')], '03_motifs',
-                   env=ctx.env(PERIOD_MIN=d['period'][0], MONOMER_MIN_ID=d['monomer_min_id']))
+                   env=ctx.env(PERIOD_MIN=d['period'][0], MONOMER_MIN_ID=d['monomer_min_id'],
+                               MONOMER_GENOMES=os.path.join(ctx.run, 'tables', 'genomes.tsv'),
+                               MONOMER_CONS=':'.join(fd['consensus'] for fd in ctx.cfg.families.values())))
     return [os.path.join(m, c + '.fa') for c in ctx.codes]
 
 
-st_motifs.plan = lambda ctx: (_dats(ctx), {'period': ctx.cfg.data['discovery']['period'], 'min_copies': ctx.cfg.data['discovery']['min_copies'],
-                                           'monomerize': ctx.cfg.data['discovery']['monomerize'],
-                                           'monomer_min_id': ctx.cfg.data['discovery']['monomer_min_id']})
+st_motifs.plan = lambda ctx: (_dats(ctx) + ([os.path.join(ctx.run, 'tables', 'genomes.tsv')] if os.path.exists(os.path.join(ctx.run, 'tables', 'genomes.tsv')) else []),
+                              {'period': ctx.cfg.data['discovery']['period'], 'min_copies': ctx.cfg.data['discovery']['min_copies'],
+                               'monomerize': ctx.cfg.data['discovery']['monomerize'],
+                               'monomer_min_id': ctx.cfg.data['discovery']['monomer_min_id'],
+                               'step3b': 'runs-v3'})
 
 
 @stage('04_filter', needs=('trf', 'gawk'))
