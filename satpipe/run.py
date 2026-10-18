@@ -49,6 +49,13 @@ class StageError(Exception):
 # ----------------------------------------------------------------------------- helpers
 
 def fingerprint(path: str) -> str:
+    if os.path.isdir(path):   # e.g. subfamily.consensuses given as a directory of FASTA files (stage 21 plan)
+        h = hashlib.sha256()
+        for name in sorted(os.listdir(path)):
+            p = os.path.join(path, name)
+            if os.path.isfile(p):
+                h.update(('%s\t%s\n' % (name, fingerprint(p))).encode())
+        return 'dir-sha256:' + h.hexdigest()
     st = os.stat(path)
     if st.st_size <= SMALL:
         h = hashlib.sha256()
