@@ -472,6 +472,9 @@ st_rotate.plan = lambda ctx: ([os.path.join(ctx.run, 'motifs', c + '.fa.clean.fa
 @stage('06_cluster', needs=('vsearch',))
 def st_cluster(ctx: Ctx):
     clean = os.path.join(ctx.run, 'motifs', 'clean')
+    # a rerun must not inherit clusters (and Step-7 *_rotated folders) of an earlier clustering: Step 8 pools every
+    # clusters_by_file/*/*_rotated/*.rotated.fa it finds
+    shutil.rmtree(os.path.join(clean, 'clusters_by_file'), ignore_errors=True)
     ctx.sh(['bash', os.path.join(ctx.scripts, '01_discovery_clustering/Step6.sh'), clean, os.path.join(clean, 'clusters_by_file')],
            '06_cluster', env=_disc_env(ctx))
     return []

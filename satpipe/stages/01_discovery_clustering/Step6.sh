@@ -34,6 +34,9 @@ for infa in "$INPUT_DIR"/*.rot; do
   # vsearch numbers them cluster_${base}_0, cluster_${base}_1, ... (no zero padding) in
   # the order clusters were created. See PIPELINE.md Step 5/6 for the strand choice.
   rm -f "$base_dir"/cluster_"$base"_* "$base_dir/${base}"_cluster_*.fa
+  # Step 7 writes one <base>_cluster_N_rotated/ folder per cluster and never removes them; folders left by an earlier
+  # clustering (other motif set, other strand, other cluster numbers) would be pooled by Step 8 as if current
+  rm -rf "$base_dir"/*_rotated
   vsearch --cluster_fast "$infa" --id "$ID" --strand "$STRAND" --clusters "$base_dir/cluster_${base}_" --quiet
 
   # rename to ${base}_cluster_N.fa keeping vsearch's own cluster number + 1, so the name

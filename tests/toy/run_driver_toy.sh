@@ -42,6 +42,14 @@ else
 fi
 echo "cluster_family.tsv:"; sed 's/^/  /' "$TAB"
 satpipe run "$W/toy.yaml"
+echo "--- stale clustering folders must not be pooled on a rerun"
+SD="$W/run/motifs/clean/clusters_by_file/spa.fa.clean.fas/spa.fa.clean.fas_cluster_999_rotated"
+mkdir -p "$SD" && printf '>STALE_RECORD
+ACGTACGTACGTACGTACGT
+' > "$SD/spa.fa.clean.fas_cluster_999.rotated.fa"
+satpipe run "$W/toy.yaml" --from 06_cluster --to 08_cross --force > "$W/stale_rerun.log" 2>&1
+if grep -q STALE_RECORD "$W/run/cross/all7_pooled.degap.fa"; then echo "FAIL: stale record pooled"; exit 1; else echo "  ok: no stale record in the pooled file"; fi
+satpipe run "$W/toy.yaml" > "$W/after_stale.log" 2>&1
 echo "--- second invocation must skip everything"
 satpipe run "$W/toy.yaml" | grep -c 'skipped'
 [ -z "$EQ" ] && { echo "DRIVER TOY: ran (no comparison requested)"; exit 0; }
