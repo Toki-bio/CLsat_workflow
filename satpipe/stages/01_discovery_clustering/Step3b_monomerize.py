@@ -11,6 +11,12 @@ motif with itself rotated by round(len / k) letters, globally, with indels allow
 (unit edit distance). If the identity is >= MIN_ID, the motif is k units. The k with the highest identity wins;
 the motif is replaced by its first round(len / k) letters. No consensus, family or external tool is used.
 
+A motif can also be a unit plus part of the next one (e.g. 226 letters for a 146-letter CLsat1 array: one unit and its
+first 80 letters again); that is no whole multiple, so the test above misses it. If no k is found, the motif's end is
+compared with its own start: for every p from PERIOD_MIN to len - PARTIAL_MIN_OVERLAP, the last len - p letters are
+aligned with the first len - p (same banded identity). The p with the highest identity >= PARTIAL_MIN_ID wins and the
+motif is replaced by its first p letters (|monomerized=partial:<old period>:<identity>).
+
 len= becomes the unit length, copies= is multiplied by k, and |monomerized=k:<old period>:<identity> is appended.
 The TRF interval of such a motif is not trusted as an array outline (a multi-unit TRF row can bridge separate arrays
 and the DNA between them): if it is longer than 2 x MONOMER_SEED_UNITS units, the interval is scanned for CLsat (the
@@ -22,6 +28,7 @@ array ends. Every change is written to <out>.monomerize.tsv.
 
 Usage: Step3b_monomerize.py <motifs.fa> [out.fa]   (default: rewrite in place, original kept as .before_monomerize)
 Environment (defaults):  PERIOD_MIN [80]  MONOMER_MIN_ID [0.70]  MONOMER_BAND [12]  MONOMER_SEED_UNITS [10]
+                         PARTIAL_MIN_ID [0.80]  PARTIAL_MIN_OVERLAP [60]
 """
 import os
 import re
@@ -65,7 +72,18 @@ def unit_count(seq, period_min, min_id, band):
     return best
 
 
-def monomerize_header(h, k, unit_len, old_len, idv):
+def partial_period(seq, period_min, min_id, min_overlap, band):
+    """(p, identity): the motif is a p-letter unit plus a repeat of its first len - p letters; (None, 0.0) otherwise."""
+    s = seq.upper()
+    best = (None, 0.0)
+    for p in range(period_min, len(s) - min_overlap + 1):
+        idv = banded_identity(s[p:], s[:len(s) - p], band)
+        if idv >= min_id and idv > best[1]:
+            best = (p, idv)
+    return best
+
+
+def monomerize_header(h, k, unit_len, old_len, idv, tag=None):
     h = re.sub(r'\|len=[^|]*', '|len=%d' % unit_len, h, count=1)
     def _copies(mo):
         try:
@@ -73,7 +91,7 @@ def monomerize_header(h, k, unit_len, old_len, idv):
         except ValueError:
             return mo.group(0)
     h = re.sub(r'\|copies=([^|]*)', _copies, h, count=1)
-    return h + '|monomerized=%d:%d:%.2f' % (k, old_len, idv)
+    return h + '|monomerized=%s:%d:%.2f' % (tag or '%d' % k, old_len, idv)
 
 
 COORD = re.compile(r'([A-Za-z0-9_.-]+):([0-9]+)-([0-9]+)')
@@ -167,6 +185,8 @@ def main():
     min_id = float(os.environ.get('MONOMER_MIN_ID', 0.70))
     band = int(os.environ.get('MONOMER_BAND', 12))
     seed_units = int(os.environ.get('MONOMER_SEED_UNITS', 10))
+    partial_id = float(os.environ.get('PARTIAL_MIN_ID', 0.80))
+    partial_ov = int(os.environ.get('PARTIAL_MIN_OVERLAP', 60))
     genomes, cons = {}, []
     if os.environ.get('MONOMER_GENOMES') and os.environ.get('MONOMER_CONS'):
         for line in open(os.environ['MONOMER_GENOMES']):
@@ -191,10 +211,15 @@ def main():
     with open(out, 'w') as f:
         for h, s in recs:
             k, idv = unit_count(s, period_min, min_id, band)
+            tag = None
+            if k == 1:
+                p, pidv = partial_period(s, period_min, partial_id, partial_ov, band)
+                if p:
+                    k, idv, tag = len(s) / p, pidv, 'partial'
             if k > 1:
                 unit = s[:round(len(s) / k)]
-                changed.append((h, len(s), k, len(unit), idv))
-                mh = monomerize_header(h, k, len(unit), len(s), idv)
+                changed.append((h, len(s), tag or '%d' % k, len(unit), idv))
+                mh = monomerize_header(h, k, len(unit), len(s), idv, tag)
                 heads = None
                 mm = COORD.search(h)
                 if genomes and cons and mm and (int(mm.group(3)) - int(mm.group(2)) + 1) > 2 * seed_units * len(unit):
@@ -212,10 +237,10 @@ def main():
     with open(out + '.monomerize.tsv', 'w') as f:
         f.write('header\tmotif_len\tunits\tunit_len\tself_identity\n')
         for h, L, k, ul, idv in changed:
-            f.write('%s\t%d\t%d\t%d\t%.3f\n' % (h, L, k, ul, idv))
-    print('Step 3b: %s: %d motifs, %d monomerized (k=2: %d, k>=3: %d)'
-          % (os.path.basename(out), len(recs), len(changed),
-             sum(1 for c in changed if c[2] == 2), sum(1 for c in changed if c[2] >= 3)))
+            f.write('%s\t%d\t%s\t%d\t%.3f\n' % (h, L, k, ul, idv))
+    print('Step 3b: %s: %d motifs, %d monomerized (k=2: %d, k>=3: %d, partial: %d)'
+          % (os.path.basename(out), len(recs), len(changed), sum(1 for c in changed if c[2] == '2'),
+             sum(1 for c in changed if c[2] not in ('2', 'partial')), sum(1 for c in changed if c[2] == 'partial')))
 
 
 if __name__ == '__main__':

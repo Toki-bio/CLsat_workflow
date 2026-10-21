@@ -92,6 +92,40 @@ def test_unit_never_below_period_min():
     assert all(len(s) // k >= 80 for k in range(2, len(s) // 80 + 1))
 
 
+def p_of(seq, pmin=80):
+    return m3b.partial_period(seq, pmin, 0.80, 60, 12)[0]
+
+
+def test_partial_unit_cut_to_one_unit():
+    # the mixta case: a 146-letter CLsat1 unit plus its first 80 letters again (TRF period 215, 226 letters)
+    c = cons('CLsat1')
+    assert p_of(c + c[:80]) == len(c)
+    r = random.Random(7)
+    for _ in range(50):
+        u = rnd(146, r)
+        p = p_of(u + mutate(u[:r.randint(60, 120)], r, subs=0.05, indels=1))
+        assert p is not None and abs(p - 146) <= 2
+
+
+def test_partial_never_on_single_units_or_random():
+    for fam in ('CLsat1', 'CLsat2', 'CLsat3', 'CLsat4'):
+        assert p_of(cons(fam)) is None, fam
+    r = random.Random(8)
+    calls = sum(p_of(rnd(r.randint(140, 300), r)) is not None for _ in range(300))
+    calls += sum(p_of(rnd(r.randint(140, 300), r, 'AATTGC')) is not None for _ in range(300))
+    assert calls == 0
+
+
+def test_partial_in_file_round_trip(tmp_path):
+    c = cons('CLsat1')
+    src = tmp_path / 'm.fa'
+    src.write_text('>mix|ptg000337l_pilon:105428-128449|len=215|copies=105|locuslen=23022\n%s\n' % (c + c[:80]))
+    subprocess.run([sys.executable, SCRIPT, str(src)], check=True, capture_output=True)
+    lines = src.read_text().split('\n')
+    assert lines[1] == c
+    assert '|len=146|' in lines[0] and '|monomerized=partial:226:' in lines[0]
+
+
 def test_header_rewrite():
     h = 'armf|h1tg000102l:2989387-3590591|len=292|copies=2059.7|locuslen=601205'
     out = m3b.monomerize_header(h, 2, 146, 292, 0.99)
