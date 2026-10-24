@@ -164,7 +164,7 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                           doc="Pieces shorter than this are no longer bisected; if TRF still times out on them they "
                               "are listed in unscanned.tsv and left out (never imputed)."),
         "edge_tol": F("int", default=50, min=0, doc="EDGE_TOL used by edge refinement."),
-        "rearbitrate": F("bool", default=True, doc="Re-run stage 14 on the finalised catalogue."),
+        "rearbitrate": F("bool", default=True, doc="No effect (kept so old configs load): stage 14 always arbitrates the final catalogue; there is no separate re-arbitration pass."),
     }),
     "anchor": F("block", doc="Anchor phasing (stage 21): every consensus the run writes is rotated into the frame of "
                              "the anchor family, so figures, alignments and deposited FASTA share one start.", fields={

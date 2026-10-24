@@ -88,11 +88,26 @@ for cid, sp, scaf, x, y in CAND:
         sys.exit('candidate %s: species %r not in %s' % (cid, sp, a.genomes))
 
 
+def run(cmd):
+    """Run a tool; a failure stops the stage with the tool's message (it used to give an empty result silently)."""
+    r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit('%s failed (exit %d): %s' % (' '.join(str(c) for c in cmd), r.returncode, r.stderr.strip()[-500:]))
+    return r
+
+
+def fetch(sp, scaf, x, y):
+    """1-based inclusive region; an empty result is an error (missing contig or coordinates past its end)"""
+    r = run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, y)])
+    seq = ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
+    if not seq:
+        sys.exit('samtools faidx %s %s:%d-%d returned no sequence: %s' % (GEN[sp], scaf, x, y, r.stderr.strip()[-300:]))
+    return seq
+
+
 def faidx(sp, scaf, x, y):
     """1-based inclusive region"""
-    r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, y)],
-                       capture_output=True, text=True)
-    return ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
+    return fetch(sp, scaf, x, y)
 
 
 def scaf_len(sp, scaf):
@@ -108,9 +123,7 @@ def best_bits(query_seq, fam):
     q = '%s/_q.fa' % OUT
     with open(q, 'w') as f:
         f.write('>q\n%s\n' % query_seq)
-    r = subprocess.run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1',
-                        q, '%s/%s.doubled.fa' % (OUT, fam)],
-                       capture_output=True, text=True)
+    r = run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1', q, '%s/%s.doubled.fa' % (OUT, fam)])
     best = 0.0
     for line in r.stdout.splitlines():
         if line.startswith('#'):

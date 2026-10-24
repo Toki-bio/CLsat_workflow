@@ -46,17 +46,20 @@ while IFS=$'\t' read -r lid kind sp scf rs re trunc explen; do
   [ "$rs" = "0" ] && continue
   # family + mono for this locus
   read -r _ _ _ _ _ subt mono < <(awk -F'\t' -v L="$lid" '$1==L{print; exit}' "$MASTER")   # exact id (L12.1 is not a pattern)
-  [ -s "$WORK/cons_x/${subt}.x.fa" ] || continue
+  # a locus whose family has no consensus still gets a row (NA), it never vanishes
+  [ -s "$WORK/cons_x/${subt}.x.fa" ] || { printf '%s\t%s\t%s\tNA\tNA\tNA\tNA\t0\n' "$lid" "$kind" "$subt" >> "$OUT"; continue; }
   hdr="${sp}|${scf}:${rs}-${re}"
-  # extract region sequence
-  samtools faidx "$FA" "$hdr" 2>/dev/null | awk 'NR>1{printf "%s",$0} END{print ""}' > $tmpq.seq || continue
+  # extract region sequence; stage 16 writes every LB/RB region, so a missing one is an error, not a skip
+  samtools faidx "$FA" "$hdr" > $tmpq.raw || { echo "FATAL: region $hdr of $lid not in $FA" >&2; exit 1; }
+  awk 'NR>1{printf "%s",$0} END{print ""}' $tmpq.raw > $tmpq.seq
   qlen=$(tr -d '\n' < $tmpq.seq | wc -c)
-  [ "$qlen" -lt 20 ] && continue
+  [ "$qlen" -lt 20 ] && { printf '%s\t%s\t%s\tNA\tNA\tNA\tNA\t%d\n' "$lid" "$kind" "$subt" "$qlen" >> "$OUT"; continue; }
   printf '>q\n%s\n' "$(cat $tmpq.seq)" > $tmpq.fa
   consx=$WORK/cons_x/${subt}.x.fa
   # ssearch36: query=region, library=doubled consensus
   # -m 8C tabular: qid sid pid alen mm go qs qe ss se ev bits
-  res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
+  # awk, not grep -v: with no hit grep exits 1, and pipefail + set -e killed the stage instead of writing the NA row
+  res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
   [ -z "$res" ] && { printf '%s\t%s\t%s\tNA\tNA\tNA\tNA\t%d\n' "$lid" "$kind" "$subt" "$qlen" >> "$OUT"; continue; }
   pid=$(echo "$res" | cut -f3)
   alen=$(echo "$res" | cut -f4)
@@ -71,7 +74,7 @@ while IFS=$'\t' read -r lid kind sp scf rs re trunc explen; do
   cc=$(( (raw - 1) % mono + 1 ))   # 1-based coordinate within a single monomer
   printf '%s\t%s\t%s\t%d\t%s\t%s\t%s\t%d\n' "$lid" "$kind" "$subt" "$cc" "$alen" "$pid" "$strand" "$qlen" >> "$OUT"
 done < "$WORK/manifest.tsv"
-rm -f $tmpq $tmpq.fa $tmpq.seq
+rm -f $tmpq $tmpq.fa $tmpq.seq $tmpq.raw
 
 echo "boundary phase rows: $(( $(wc -l < "$OUT") - 1 ))"
 echo "=== sample ==="

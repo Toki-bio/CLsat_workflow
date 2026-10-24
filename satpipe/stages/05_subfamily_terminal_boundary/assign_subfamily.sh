@@ -21,7 +21,7 @@ command -v ssearch36 >/dev/null || { echo "ssearch36 not in PATH" >&2; exit 1; }
 [[ -d "$SUBX" ]] || { echo "sub-subfamily consensus dir not found: $SUBX" >&2; exit 1; }
 
 cd "$WORK"
-samtools faidx "$FA" 2>/dev/null || true
+samtools faidx "$FA"   # an unindexable regions FASTA is an error (was masked, and every locus became NA)
 
 # Map: which sub-subfamilies belong to each family (space-separated list per family)
 declare -A FAMSUBS
@@ -45,7 +45,9 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
   fi
   [ -z "${rs:-}" ] && { printf '%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$major" >> "$OUT"; continue; }
   hdr="${rsp}|${rscf}:${rs}-${re}"
-  samtools faidx "$FA" "$hdr" 2>/dev/null | awk 'NR>1{printf "%s",$0} END{print ""}' > $tmpq.seq
+  # stage 16 writes every LB/RB region: a missing one is an error, not an NA row
+  samtools faidx "$FA" "$hdr" > $tmpq.raw || { echo "FATAL: region $hdr of $lid not in $FA" >&2; exit 1; }
+  awk 'NR>1{printf "%s",$0} END{print ""}' $tmpq.raw > $tmpq.seq
   qlen=$(tr -d '\n' < $tmpq.seq | wc -c)
   [ "$qlen" -lt 30 ] && { printf '%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$major" >> "$OUT"; continue; }
   printf '>q\n%s\n' "$(cat $tmpq.seq)" > $tmpq.fa
@@ -54,8 +56,10 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
   best=""; bestbits=-1; bestpid=0; bestaln=0; second=""; secondbits=-1
   for sub in ${FAMSUBS[$major]:-}; do
     consx=$SUBX/${sub}.fa
-    [ -s "$consx" ] || continue
-    res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
+    # every listed sub-subfamily must have its consensus: a missing one would silently narrow the choice
+    [ -s "$consx" ] || { echo "FATAL: sub-subfamily $sub of $major (members.tsv) has no consensus file $consx" >&2; exit 1; }
+    # awk, not grep -v: no hit must give an empty result, not a pipefail exit
+    res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
     [ -z "$res" ] && continue
     bits=$(echo "$res" | cut -f12)
     pid=$(echo "$res" | cut -f3)
@@ -81,7 +85,7 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$lid" "$major" "$best" "$bestpid" "$bestaln" "$bestbits" "$second" "$secondbits" "$delta" >> "$OUT"
   fi
 done < "$MASTER"
-rm -f $tmpq $tmpq.fa $tmpq.seq
+rm -f $tmpq $tmpq.fa $tmpq.seq $tmpq.raw
 
 echo "rows: $(( $(wc -l < "$OUT") - 1 ))"
 echo "=== sample ==="

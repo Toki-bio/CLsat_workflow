@@ -39,9 +39,10 @@ for infa in "$INPUT_DIR"/*.fa; do
   # Step 0: MAFFT alignment
   echo "Aligning $infa with MAFFT..."
   aligned_fasta="$ROTATED_DIR/${base}.aligned.fasta"
-  mafft --localpair --maxiterate 1000 --ep 0.123 --nuc --reorder --preservecase --quiet "$infa" > "$aligned_fasta" 2>/dev/null || {
-    echo "Error: MAFFT alignment failed for $infa"
-    continue
+  mafft --localpair --maxiterate 1000 --ep 0.123 --nuc --reorder --preservecase --quiet "$infa" > "$aligned_fasta" || {
+    # a cluster that cannot be aligned must stop the stage: skipping it silently drops its loci (GLM audit 2026-10-24)
+    echo "FATAL: MAFFT alignment failed for $infa" >&2
+    exit 1
   }
   echo "Alignment done: $aligned_fasta"
 
@@ -70,15 +71,12 @@ for infa in "$INPUT_DIR"/*.fa; do
         } 
       } 
       print max_start ? max_start : 1 
-    }' "$aligned_fasta" 2>/dev/null || {
-      echo "Error: Failed to find consensus start in $aligned_fasta"
-      continue
-    })
+    }' "$aligned_fasta") || { echo "FATAL: failed to find the consensus start in $aligned_fasta" >&2; exit 1; }
 
   # Check if cons_start is valid
   if [ "$cons_start" -eq 0 ]; then
-    echo "Error: No non-gap characters found in $aligned_fasta. Skipping rotation."
-    continue
+    echo "FATAL: no non-gap characters in $aligned_fasta" >&2
+    exit 1
   fi
 
   # Step 2: Rotate sequences and realign with MAFFT
@@ -105,9 +103,9 @@ for infa in "$INPUT_DIR"/*.fa; do
         print header
         print suf pre
       }
-    }' "$aligned_fasta" | mafft --localpair --maxiterate 1000 --ep 0.123 --nuc --reorder --preservecase --quiet - > "$outfa" 2>/dev/null || {
-    echo "Error: MAFFT realignment failed for rotated sequences of $infa"
-    continue
+    }' "$aligned_fasta" | mafft --localpair --maxiterate 1000 --ep 0.123 --nuc --reorder --preservecase --quiet - > "$outfa" || {
+    echo "FATAL: MAFFT realignment failed for the rotated sequences of $infa" >&2
+    exit 1
   }
   echo "Rotation and realignment done: $outfa"
 done

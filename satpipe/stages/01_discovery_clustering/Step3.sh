@@ -33,13 +33,14 @@ while IFS= read -r -d '' dat_file; do
     # Get absolute path of target
     target=$(readlink -f -- "$dat_file" 2>/dev/null)
     if [[ ! -f "$target" || ! -r "$target" ]]; then
-      echo "Error: Symlink $dat_file points to inaccessible or non-existent file: $target" >&2
-      continue
+      # a genome without readable TRF output must stop the run, not drop out of it silently
+      echo "FATAL: Symlink $dat_file points to inaccessible or non-existent file: $target" >&2
+      exit 1
     fi
   else
     if [[ ! -r "$dat_file" ]]; then
-      echo "Error: File $dat_file is not readable" >&2
-      continue
+      echo "FATAL: File $dat_file is not readable" >&2
+      exit 1
     fi
     target="$dat_file"
   fi

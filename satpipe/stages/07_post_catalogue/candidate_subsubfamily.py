@@ -38,6 +38,23 @@ SAM = shutil.which('samtools') or sys.exit('samtools not on PATH')
 OUT = a.out
 
 
+
+def run(cmd):
+    """Run a tool; a failure stops the stage with the tool's message (it used to give an empty result silently)."""
+    r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit('%s failed (exit %d): %s' % (' '.join(str(c) for c in cmd), r.returncode, r.stderr.strip()[-500:]))
+    return r
+
+
+def fetch(sp, scaf, x, y):
+    """1-based inclusive region; an empty result is an error (missing contig or coordinates past its end)"""
+    r = run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, y)])
+    seq = ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
+    if not seq:
+        sys.exit('samtools faidx %s %s:%d-%d returned no sequence: %s' % (GEN[sp], scaf, x, y, r.stderr.strip()[-300:]))
+    return seq
+
 def read_tsv(path, min_cols):
     rows = []
     for line in open(path):
@@ -95,18 +112,14 @@ for cid, s in sorted(summary.items()):
     fam = s['call']
     mono = MONO[fam]
     win = min(2 * mono, y - x + 1)
-    r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scaf, x, x + win - 1)],
-                       capture_output=True, text=True)
-    q = ''.join(l.strip() for l in r.stdout.splitlines()[1:]).upper()
+    q = fetch(sp, scaf, x, x + win - 1)
     with open('%s/_ssq.fa' % OUT, 'w') as f:
         f.write('>q\n%s\n' % q)
     scores = {}
     for name in ss:
         if FAMOF.get(name) != fam:
             continue
-        o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1',
-                            '%s/_ssq.fa' % OUT, '%s/ss_%s.fa' % (OUT, name)],
-                           capture_output=True, text=True).stdout
+        o = run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1', '%s/_ssq.fa' % OUT, '%s/ss_%s.fa' % (OUT, name)]).stdout
         best = 0.0
         pid = 0.0
         for line in o.splitlines():

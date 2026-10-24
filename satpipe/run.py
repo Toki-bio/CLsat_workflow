@@ -316,6 +316,12 @@ def st_trf(ctx: Ctx):
     given = (ctx.cfg.data.get('inputs') or {}).get('trf_dat') or {}
     big_rows = []
     outs = []
+    # Step 3 reads every *.dat in trf/: one left by a genome since removed or renamed in the config would be
+    # pooled silently into the catalogue (GLM audit 2026-10-24)
+    for f in os.listdir(trf_dir):
+        if f.endswith('.dat') and f[:-4] not in ctx.cfg.genomes:
+            os.remove(os.path.join(trf_dir, f))
+            ctx.say('  removed %s: not a genome of this config' % f)
     for code, genome in ctx.cfg.genomes.items():
         dat = os.path.join(trf_dir, code + '.dat')
         thr = _large_threshold(ctx)
@@ -452,6 +458,9 @@ def _dats(ctx):
 
 @stage('03_motifs', needs=('gawk',))
 def st_motifs(ctx: Ctx):
+    # start from an empty motifs/: Steps 4-8 take their inputs by directory glob, so files of a genome since
+    # removed or renamed in the config would otherwise be clustered and pooled (GLM audit 2026-10-24)
+    shutil.rmtree(os.path.join(ctx.run, 'motifs'), ignore_errors=True)
     m = ctx.d('motifs')
     ctx.sh(['bash', os.path.join(ctx.scripts, '01_discovery_clustering/Step3.sh'), os.path.join(ctx.run, 'trf'), m],
            '03_motifs', env=_disc_env(ctx))
@@ -974,16 +983,26 @@ def st_anchor(ctx: Ctx):
     indep = bool(ac.get('independent'))
     cons = (cfg.get('subfamily') or {}).get('consensuses')
     sub = {}
-    if cons and os.path.exists(cons):
+    members = (cfg.get('subfamily') or {}).get('members') or {}
+    if cons:
+        # a configured but missing path, a duplicate record name, or a listed sub-subfamily without a record
+        # used to make this stage skip them silently (GLM audit 2026-10-24)
+        if not os.path.exists(cons):
+            raise StageError('21_anchor: subfamily.consensuses not found: %s' % cons)
         for fp in A.fasta_files(cons):
-            sub.update(A.read_fasta(fp))
+            for n, s in A.read_fasta(fp).items():
+                if n in sub:
+                    raise StageError('21_anchor: sub-subfamily record %s appears twice (%s)' % (n, fp))
+                sub[n] = s
+        lost = [n for subs in members.values() for n in subs if n not in sub]
+        if lost:
+            raise StageError('21_anchor: sub-subfamilies listed in subfamily.members without a consensus record: %s' % ', '.join(lost))
     rows, fam_out, sub_out = [], {}, {}
     if indep:
         fam_out = {f: A.clean(s) for f, s in fam_recs.items()}
         rows += [('families', f, len(s), 0, '', s[:7], 'own frame') for f, s in fam_out.items()]
-        members = (cfg.get('subfamily') or {}).get('members') or {}
         for fam, subs in members.items():
-            part = {n: sub[n] for n in subs if n in sub}
+            part = {n: sub[n] for n in subs}
             if part:
                 rot, r = A.anchor_records(part, fam_out[fam], '', mm, mi)
                 sub_out.update(rot)

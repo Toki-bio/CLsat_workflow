@@ -21,6 +21,7 @@ class AnchorError(Exception):
 
 
 def read_fasta(path: str) -> dict:
+    """Records by name; a name that appears twice is an error (it used to overwrite the first silently)."""
     out, name, buf = {}, None, []
     with open(path) as fh:
         for line in fh:
@@ -29,6 +30,8 @@ def read_fasta(path: str) -> dict:
                 if name is not None:
                     out[name] = ''.join(buf)
                 name, buf = line[1:].split()[0], []
+                if name in out:
+                    raise ValueError('%s: record name %s appears twice' % (path, name))
             elif name is not None:
                 buf.append(line.strip())
     if name is not None:

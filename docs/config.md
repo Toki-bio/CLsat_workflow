@@ -60,7 +60,7 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `finalisation.trf_timeout` | int |  | `1800` | Seconds after which a chunk's TRF run is stopped and the chunk bisected (the published run's chunk 44 of the 85 Mb scaffold never finished: a telomeric tail). |
 | `finalisation.min_piece_bp` | int |  | `20000` | Pieces shorter than this are no longer bisected; if TRF still times out on them they are listed in unscanned.tsv and left out (never imputed). |
 | `finalisation.edge_tol` | int |  | `50` | EDGE_TOL used by edge refinement. |
-| `finalisation.rearbitrate` | bool |  | `True` | Re-run stage 14 on the finalised catalogue. |
+| `finalisation.rearbitrate` | bool |  | `True` | No effect (kept so old configs load): stage 14 always arbitrates the final catalogue; there is no separate re-arbitration pass. |
 | `anchor.family` | str |  |  | Family whose consensus defines the frame. Default: the first family under `families`. |
 | `anchor.motif` | str |  | `` | Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor family's consensus is used exactly as given. |
 | `anchor.independent` | bool |  | `False` | Families are unrelated (no common frame exists, e.g. different satellites of one genome): each family consensus is its own frame and only sub-subfamilies are rotated, onto their family. Default false: all families must be placeable on the anchor. |
