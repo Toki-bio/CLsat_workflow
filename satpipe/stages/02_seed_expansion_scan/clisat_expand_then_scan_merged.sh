@@ -234,6 +234,12 @@ done > "$GENOME_MAP"
 # ── scan-only: skip PASS1+2 entirely ────────────────────────────────────────
 if [[ "$SCAN_ONLY" == "1" ]]; then
   log "SCAN_ONLY mode: skipping PASS1+2, using input BED directly as merged regions"
+  # every row must be tab-separated chrom start end sp|... with a genome of the genome table: a row that is not
+  # would otherwise be dropped by scan_region without a trace (GLM audit 2026-10-24)
+  awk -F'\t' 'NR==FNR{g[$1]=1; next} /^[ \t]*$|^#/{next}
+    { i=index($4,"|"); sp=(i>1?substr($4,1,i-1):"")
+      if(NF<4 || $2!~/^[0-9]+$/ || $3!~/^[0-9]+$/ || !(sp in g)){ print "FATAL: scan-only BED row " FNR " is not chrom<TAB>start<TAB>end<TAB>sp|... with a known genome: " $0 > "/dev/stderr"; bad=1; exit } }
+    END{ exit bad }' "$GENOME_MAP" "$BED" || exit 1
   cp "$BED" "$MRG_BED"
   : > "$EXP_BED"
   # jump straight to PASS3
@@ -580,7 +586,9 @@ scan_region(){
   IFS=$'\t' read -r chrom start0 end0 tag <<<"$line"
   sp="${tag%%|*}"
   genome=$(awk -v S="$sp" 'BEGIN{FS="\t"} $1==S{print $2; exit}' "$GENOME_MAP")
-  [[ -n "$genome" ]] || return 0
+  # an unknown genome or a failed tool call is an error (parallel reports the job, pipefail stops the script);
+  # it used to give "no windows" silently (GLM audit 2026-10-24)
+  [[ -n "$genome" ]] || { echo "FATAL scan_region: genome '$sp' of '$tag' not in $GENOME_MAP" >&2; return 1; }
 
   local scan_start=$((start0+1))
   local scan_end=$(( end0 - SCAN_WIN_BP + 1 ))
@@ -592,15 +600,16 @@ scan_region(){
 
   for ((pos=scan_start; pos<=scan_end; pos+=SCAN_STEP_BP)); do
     local s1=$pos e1=$((pos + SCAN_WIN_BP - 1))
-    samtools faidx "$genome" "${chrom}:${s1}-${e1}" 2>/dev/null \
-      | awk -v nm="${tag}|scan|${chrom}:${s1}-${e1}" \
+    samtools faidx "$genome" "${chrom}:${s1}-${e1}" > "${WDIR}/raw.fa" \
+      || { echo "FATAL scan_region: samtools faidx $genome ${chrom}:${s1}-${e1} failed" >&2; rm -rf "$WDIR"; return 1; }
+    awk -v nm="${tag}|scan|${chrom}:${s1}-${e1}" \
           'BEGIN{ORS=""} /^>/{print ">"nm"\n"; next} \
-           {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' \
-      > "$winfa" || continue
-    grep -q '^>' "$winfa" || continue
+           {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' "${WDIR}/raw.fa" > "$winfa"
+    grep -q '^>' "$winfa" || { echo "FATAL scan_region: no sequence for ${chrom}:${s1}-${e1} in $genome" >&2; rm -rf "$WDIR"; return 1; }
     local bits
-    bits=$(ssearch36 -n -m 8C "$winfa" "$CONS" 2>/dev/null \
-      | awk 'BEGIN{m=0} /^[^#]/{if(($12+0)>m) m=$12+0} END{print m+0}')
+    ssearch36 -n -m 8C "$winfa" "$CONS" > "${WDIR}/ss.out" 2> "${WDIR}/ss.err" \
+      || { echo "FATAL scan_region: ssearch36 failed on ${chrom}:${s1}-${e1}: $(tail -2 "${WDIR}/ss.err")" >&2; rm -rf "$WDIR"; return 1; }
+    bits=$(awk 'BEGIN{m=0} /^[^#]/{if(($12+0)>m) m=$12+0} END{print m+0}' "${WDIR}/ss.out")
     if (( ${bits%%.*} >= SCAN_MIN_BITS_INT )); then
       printf "%s\t%d\t%s\t%s\t%s\n" "$chrom" "$pos" "$bits" "$tag" "$sp"
     fi

@@ -12,19 +12,20 @@ set -euo pipefail
 IN="${1:-}"
 [[ -n "$IN" && -s "$IN" ]] || { echo "ERROR: input fasta missing/empty" >&2; exit 2; }
 
-awk 'BEGIN{FS=OFS="\t"}
+# The position is field 2 of the header (sp|SCAFFOLD:START-END|...), split at its LAST ':' so any contig
+# name works. A header without it is an error: it used to be dropped silently, and the old pattern
+# ([A-Za-z0-9_.-]+:start-end anywhere) misread contig names holding other characters (GLM audit 2026-10-24).
+awk 'BEGIN{OFS="\t"}
 /^>/{
   hdr=substr($0,2)
-
-  # Find first occurrence of  SCAFFOLD:START-END  anywhere in header
-  # Example: arm|JAWWNF010000123.1:2760899-2800411|len=...
-  if (match(hdr, /([A-Za-z0-9_.-]+):([0-9]+)-([0-9]+)/, m)) {
-    scaf=m[1]; s=m[2]+0; e=m[3]+0;
-    if (s<1 || e<1) next;
-    # BED is 0-based start, half-open end
-    print scaf, s-1, e, hdr, 0, "."
-  } else {
-    # no coords
-    # print "WARN: no coords in header: " hdr > "/dev/stderr"
-  }
-}' "$IN"
+  n=split(hdr, f, "|")
+  pos=(n>=2 ? f[2] : "")
+  c=0; for(i=length(pos); i>0; i--) if(substr(pos,i,1)==":"){ c=i; break }
+  scaf=(c>1 ? substr(pos,1,c-1) : ""); rng=(c ? substr(pos,c+1) : "")
+  if (scaf=="" || rng !~ /^[0-9]+-[0-9]+$/) { print "FATAL: no SCAFFOLD:START-END in field 2 of header: " hdr > "/dev/stderr"; bad=1; exit }
+  split(rng, r, "-"); s=r[1]+0; e=r[2]+0
+  if (s<1 || e<s) { print "FATAL: bad coordinates in header: " hdr > "/dev/stderr"; bad=1; exit }
+  # BED is 0-based start, half-open end
+  print scaf, s-1, e, hdr, 0, "."
+}
+END{ exit bad }' "$IN"

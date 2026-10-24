@@ -111,7 +111,12 @@ def faidx(sp, scf, s, e):
     if e < s:
         return ''
     r = subprocess.run([SAM, 'faidx', GEN[sp], '%s:%d-%d' % (scf, s, e)], capture_output=True, text=True)
-    return ''.join(l.strip() for l in r.stdout.splitlines() if not l.startswith('>')).upper() if not r.returncode else ''
+    seq = ''.join(l.strip() for l in r.stdout.splitlines() if not l.startswith('>')).upper()
+    # a failed fetch of a region inside the contig is an error; it used to be filed as a 'truncated' flank,
+    # silently losing an anchor (GLM audit 2026-10-24)
+    if r.returncode or not seq:
+        sys.exit('samtools faidx %s %s:%d-%d failed (exit %d): %s' % (GEN[sp], scf, s, e, r.returncode, r.stderr.strip()[-300:]))
+    return seq
 
 
 def overlaps_other(sp, scf, fs, fe, self_i):
