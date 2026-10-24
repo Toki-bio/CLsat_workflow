@@ -61,15 +61,20 @@ def banded_identity(a, b, band):
 
 
 def unit_count(seq, period_min, min_id, band):
-    """(k, identity): k tandem units if the motif matches itself rotated by one unit; (1, 0.0) otherwise."""
+    """(k, identity): k tandem units if the motif matches itself rotated by one unit; (1, 0.0) otherwise.
+    A k-unit motif also matches itself rotated by any multiple of the unit (a 4-mer at a 2-unit shift), so among
+    passing k the LARGEST is kept unless a smaller one is clearly better (by more than K_TIE identity)."""
     s = seq.upper()
     best = (1, 0.0)
     for k in range(2, len(s) // period_min + 1):
         sh = round(len(s) / k)
         idv = banded_identity(s, (s + s)[sh:sh + len(s)], band)
-        if idv >= min_id and idv > best[1]:
+        if idv >= min_id and idv >= best[1] - K_TIE:
             best = (k, idv)
     return best
+
+
+K_TIE = 0.02
 
 
 def partial_period(seq, period_min, min_id, min_overlap, band):

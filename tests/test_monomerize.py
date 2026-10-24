@@ -72,6 +72,17 @@ def test_trimer_and_short_unit_dimer():
     assert k_of(v + mutate(v, r, 0.04, 1)) == 2
 
 
+def test_exact_tetramer_and_hexamer_cut_to_the_unit():
+    # a shift by 2 units matches as well as a shift by 1 unit; the unit (largest k) must win (GLM audit #31)
+    r = random.Random(12)
+    u = rnd(60, r)
+    assert m3b.unit_count(u * 4, 50, 0.70, 12)[0] == 4
+    assert m3b.unit_count(u * 6, 50, 0.70, 12)[0] == 6
+    v = rnd(80, r)
+    # mutated tetramer (indels make it a little shorter than 4 x 80, so period_min 75 lets k = 4 be tried)
+    assert m3b.unit_count(v + mutate(v, r, 0.02, 1) + mutate(v, r, 0.02, 1) + mutate(v, r, 0.02, 1), 75, 0.70, 12)[0] == 4
+
+
 def test_real_consensus_dimers():
     for fam in ('CLsat1', 'CLsat2', 'CLsat3', 'CLsat4'):
         c = cons(fam)

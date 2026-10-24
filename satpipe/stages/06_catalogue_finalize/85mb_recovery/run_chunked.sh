@@ -76,10 +76,15 @@ echo "chunks created: $n"
 run_one() {
   cf="$1"
   base=$(basename "$cf" .fa)
-  rm -f "chunks/${base}.dat" "chunks/${base}.timeout"
+  rm -f "chunks/${base}.dat" "chunks/${base}.timeout" "chunks/${base}.failed"
   timeout "$TRF_TIMEOUT" trf "$cf" $TRF_PARAMS -h -ngs > "chunks/${base}.dat" 2> "chunks/${base}.err"
   rc=$?
-  if [ "$rc" -eq 124 ]; then rm -f "chunks/${base}.dat"; touch "chunks/${base}.timeout"; fi
+  if [ "$rc" -eq 124 ]; then rm -f "chunks/${base}.dat"; touch "chunks/${base}.timeout"
+  elif [ "$rc" -ge 125 ]; then
+    # killed / crashed (OOM 137, segfault 139, timeout's own errors 125-127): the .dat is partial, never accept it.
+    # (Lower non-zero codes are not used: some TRF builds exit non-zero after a normal run.)
+    rm -f "chunks/${base}.dat"; echo "$rc" > "chunks/${base}.failed"
+  fi
   return 0
 }
 export -f run_one
@@ -88,6 +93,10 @@ export TRF_PARAMS TRF_TIMEOUT
 # scan a list of pieces in parallel; bisect the ones that time out; repeat until none is left
 scan_list(){ # scan_list <file with one chunks/name.fa per line>
   parallel --jobs "$JOBS" run_one {} < "$1"
+  if compgen -G "chunks/*.failed" > /dev/null; then
+    echo "FATAL: TRF crashed on: $(for f in chunks/*.failed; do printf '%s (exit %s) ' "$(basename "$f" .failed)" "$(cat "$f")"; done)" >&2
+    exit 1
+  fi
 }
 level=0
 ls chunks/chunk_*.fa > pieces.level0.txt
@@ -149,10 +158,11 @@ out.close()
 print('wrote scaf.trf.merged.dat: %d rows from %d pieces' % (n_rows, len(glob.glob('chunks/*.dat'))))
 PYEOF
 
-echo "=== dedupe overlapping calls (same period/copies within a few bp = same repeat seen twice) ==="
-sort -k1,1n -k4,4n scaf.trf.merged.dat | \
-  awk '{key=$4"_"$3; if(key!=prevkey || $1-prevend>100){print; prevkey=key} prevend=$2}' \
-  > scaf.trf.dedup.dat
+echo "=== dedupe calls seen twice in an overlap (identical start, end and period in scaffold coordinates) ==="
+# Only exact duplicates are removed. The earlier rule (same period and copies, start within 100 bp of the previous
+# row's end) also dropped distinct neighbouring arrays and let duplicates through when another call sorted between
+# them (GLM audit 2026-10-24). A call cut at a chunk boundary stays as two seeds, which expansion joins.
+sort -k1,1n -k2,2n -k3,3n scaf.trf.merged.dat | awk '!seen[$1" "$2" "$3]++' > scaf.trf.dedup.dat
 wc -l scaf.trf.merged.dat scaf.trf.dedup.dat
 if [ -s unscanned.tsv ]; then echo "unscanned pieces (see unscanned.tsv): $(wc -l < unscanned.tsv)"; fi
 echo TRF_CHUNKED_DONE > trf_chunked.done

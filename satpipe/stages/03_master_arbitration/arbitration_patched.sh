@@ -18,6 +18,7 @@ export LC_ALL=C   # byte-order sort: locus numbering must not depend on the loca
 #   SEG_MIN_RUN    bins a competing family must dominate to open a segment     [10]
 #   SEG_MIN_LOCUS  segments shorter than this are dropped or merged (SEG_SHORT) [2000]
 #   SEG_SHORT      drop (published) | merge                                    [drop]
+#   SCAN_WIN_MONO  stage-13 scan window in monomers (D3 width = this x MONO)  [2]
 #
 # D3 converts each scan row (1-based window start `pos`) to a 0-based BED interval of width
 # 2 x MONO, i.e. the scan window of stage 13 (292/290/292/232 bp for the Darevskia families).
@@ -52,6 +53,8 @@ DELTA="${DELTA:-20}"              # UNIQUE_SEED contradiction threshold
 DELTA_AMBIG="${DELTA_AMBIG:-15}"  # CONFLICT/sub-locus/NO_SEED ambiguity threshold
 SEG_BIN="${SEG_BIN:-1000}"; SEG_MIN_RUN="${SEG_MIN_RUN:-10}"; SEG_MIN_LOCUS="${SEG_MIN_LOCUS:-2000}"
 export SEG_SHORT="${SEG_SHORT:-drop}"
+SCAN_WIN_MONO="${SCAN_WIN_MONO:-2}"   # stage-13 scan window in monomers (scan.win_mono); D3 window = this x MONO
+[[ "$SCAN_WIN_MONO" =~ ^[1-9][0-9]*$ ]] || die "SCAN_WIN_MONO must be a positive integer, got '$SCAN_WIN_MONO'"
 
 # families table -> parallel arrays
 declare -a FAMS=() MONOS=() BITS=() SEEDS=()
@@ -108,7 +111,7 @@ check_file "$OUT/SEEDS.tagged.bed"
 log "D3: bits TSV -> BED (pos-1; width 2 x MONO)"
 
 for i in "${!FAMS[@]}"; do
-  w=$(( 2 * MONOS[i] ))
+  w=$(( SCAN_WIN_MONO * MONOS[i] ))   # must equal the stage-13 window (--scan-win-bp = scan.win_mono x MONO)
   awk -v W="$w" 'BEGIN{FS=OFS="\t"} NR>1{ i=index($4,"|"); if(i<2){ print "FATAL: bits row without genome code: " $4 > "/dev/stderr"; exit 1 }
     print substr($4,1,i-1)"|"$1, $2-1, $2-1+W, $3 }' "${BITS[$i]}" > "$OUT/${FAMS[$i]}.bits.bed"
   check_file "$OUT/${FAMS[$i]}.bits.bed"

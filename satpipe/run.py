@@ -754,7 +754,8 @@ def st_arbitrate(ctx: Ctx):
     a = ctx.cfg.data['arbitration']
     out = ctx.d('arbitration')
     env = ctx.env(DELTA=a['delta'], DELTA_AMBIG=a['delta_ambig'], SEG_BIN=a['seg_bin'], SEG_MIN_RUN=a['seg_min_run'],
-                  SEG_MIN_LOCUS=a['seg_min_locus'], SEG_SHORT=a['short_segments'])
+                  SEG_MIN_LOCUS=a['seg_min_locus'], SEG_SHORT=a['short_segments'],
+                  SCAN_WIN_MONO=ctx.cfg.data['scan']['win_mono'])   # the stage-13 window width, in monomers
     ctx.sh(['bash', os.path.join(ctx.scripts, '03_master_arbitration/arbitration_patched.sh'),
             os.path.join(ctx.run, 'rescan', 'arbitration_inputs.tsv'), os.path.join(ctx.run, 'master', 'MASTER.merged.bed'), out],
            '14_arbitrate', env=env)
@@ -766,7 +767,7 @@ def st_arbitrate(ctx: Ctx):
 
 st_arbitrate.plan = lambda ctx: ([os.path.join(ctx.run, 'rescan', 'arbitration_inputs.tsv'), os.path.join(ctx.run, 'master', 'MASTER.merged.bed')]
                                  + [os.path.join(ctx.run, 'rescan', 'MASTER_' + f + '.bits.tsv') for f in ctx.families],
-                                 {'arbitration': ctx.cfg.data['arbitration']})
+                                 {'arbitration': ctx.cfg.data['arbitration'], 'scan_win_mono': ctx.cfg.data['scan']['win_mono']})
 
 
 @stage('15_catalogue', needs=('ssearch36', 'samtools', 'bedtools', 'parallel'))
