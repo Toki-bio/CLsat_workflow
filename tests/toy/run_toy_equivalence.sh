@@ -23,7 +23,11 @@ fail=0
 mkdir -p "$W/bin"; ln -sf "$(command -v gawk)" "$W/bin/awk"
 # both chains score with fixed statistics (-z 3): the new chain passes it itself (2026-10-25), the published scripts
 # did not and used ssearch36's random shuffle statistics, so without this shim their bits differ by ~30 %
-SS_REAL="$(command -v ssearch36)"; printf '#!/bin/sh\nexec "%s" -z 3 "$@"\n' "$SS_REAL" > "$W/bin/ssearch36"; chmod +x "$W/bin/ssearch36"
+SS_REAL="$(command -v ssearch36)"
+# the published rebuild_ortho_segmented.py looks for samtools next to ssearch36, so the shim folder also links
+# every program that sits beside the real ssearch36
+for t in "$(dirname "$SS_REAL")"/*; do [ -x "$t" ] && [ ! -e "$W/bin/$(basename "$t")" ] && ln -s "$t" "$W/bin/$(basename "$t")"; done
+rm -f "$W/bin/ssearch36"; printf '#!/bin/sh\nexec "%s" -z 3 "$@"\n' "$SS_REAL" > "$W/bin/ssearch36"; chmod +x "$W/bin/ssearch36"
 export PATH="$W/bin:$PATH"
 for t in trf vsearch mafft ssearch36 gawk parallel samtools bedtools python3; do command -v $t >/dev/null || { echo "$t not on PATH" >&2; exit 2; }; done
 cmpf(){ # cmpf <label> <old> <new>
