@@ -81,6 +81,33 @@ def read_fasta_names(path: str):
                 yield line[1:].split()[0]
 
 
+def subx_dir(ctx) -> str:
+    """Directory of DOUBLED per-sub-subfamily FASTA files (<name>.fa) for assign_subfamily.sh and
+    candidate_subsubfamily.py. A directory in the config is used as given (the Darevskia subx/); a multi-record
+    FASTA (as the schema allows) is written out as tables/subx/<record>.fa, each sequence doubled. None without one."""
+    cons = (ctx.cfg.data.get('subfamily') or {}).get('consensuses')
+    if not cons:
+        return None
+    if os.path.isdir(cons):
+        return cons
+    if not os.path.isfile(cons):
+        return None
+    out = os.path.join(ctx.run, 'tables', 'subx')
+    os.makedirs(out, exist_ok=True)
+    name, seq, recs = None, [], []
+    for line in open(cons):
+        if line.startswith('>'):
+            if name: recs.append((name, ''.join(seq)))
+            name, seq = line[1:].split()[0], []
+        else:
+            seq.append(line.strip())
+    if name: recs.append((name, ''.join(seq)))
+    for n, s in recs:
+        with open(os.path.join(out, n + '.fa'), 'w') as f:
+            f.write('>%s\n%s\n' % (n, s + s))
+    return out
+
+
 def minrot(s: str) -> str:
     d = s + s
     return min(d[i:i + len(s)] for i in range(len(s)))
@@ -838,8 +865,8 @@ st_terminal.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in ('
 def st_subfamily(ctx: Ctx):
     reg = os.path.join(ctx.run, 'regions')
     sub = ctx.cfg.data.get('subfamily') or {}
-    cons = sub.get('consensuses')
-    if cons and os.path.isdir(cons):
+    cons = subx_dir(ctx)
+    if cons:
         ctx.sh(['bash', os.path.join(ctx.scripts, '05_subfamily_terminal_boundary/assign_subfamily.sh'), reg, cons,
                 os.path.join(ctx.run, 'tables', 'members.tsv')], '18_subfamily')
     else:
@@ -913,9 +940,10 @@ def st_candidates(ctx: Ctx):
             os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'),
             '--sat-bits', ctx.cfg.data['expansion']['min_bits']], '20_candidates')
     sub = ctx.cfg.data.get('subfamily') or {}
-    if sub.get('consensuses') and os.path.isdir(sub['consensuses']) and sub.get('members'):
+    subx = subx_dir(ctx)
+    if subx and sub.get('members'):
         ctx.sh(['python3', os.path.join(ctx.scripts, '07_post_catalogue/candidate_subsubfamily.py'), out,
-                os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'), sub['consensuses'],
+                os.path.join(tables, 'genomes.tsv'), os.path.join(tables, 'families.tsv'), subx,
                 os.path.join(tables, 'members.tsv'), '--already-doubled',
                 '--confident-delta', sub.get('confident_delta', 10)], '20_candidates')
     return [ctab, os.path.join(out, 'candidates_summary.json')]
