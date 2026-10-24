@@ -231,16 +231,28 @@ for sp in "${!GENOME_OF[@]}"; do
   printf "%s\t%s\n" "$sp" "${GENOME_OF[$sp]}"
 done > "$GENOME_MAP"
 
-# ss_retry <out> <ssearch36 args...>: ssearch36 under parallel load on a shared file system fails now and then
-# ("cannot open library" with a garbled name). Those failures used to be hidden (2>/dev/null) and scored as no
-# signal; now a call is retried 3 times and only then fails the job (seen 2026-10-24 on Monsoon).
+# ss_retry <out> <ssearch36 args...>: run ssearch36; a failure fails the job (it used to be hidden by 2>/dev/null
+# and scored as "no signal").
+# FASTA36 cannot open a file whose path is 120 characters or longer ("cannot open library" with the name cut; 119
+# already misreads it): measured 2026-10-24. The temp paths here hold a PID and $RANDOM, so their length varies and
+# only some calls failed. Every argument that is a file with a path of 100+ characters is therefore passed through a
+# short symlink in /tmp. Two retries remain for genuinely transient errors.
 ss_retry(){
-  local out="$1"; shift; local k
+  local out="$1"; shift; local k a short="" args=()
+  for a in "$@"; do
+    if (( ${#a} >= 100 )) && [[ -f "$a" ]]; then
+      [[ -n "$short" ]] || short=$(mktemp -d /tmp/ss.XXXXXX)
+      ln -s "$(readlink -f "$a")" "$short/${#args[@]}.fa"; args+=("$short/${#args[@]}.fa")
+    else
+      args+=("$a")
+    fi
+  done
   for k in 1 2 3; do
-    if ssearch36 "$@" > "$out" 2> "$out.err"; then rm -f "$out.err"; return 0; fi
+    if ssearch36 "${args[@]}" > "$out" 2> "$out.err"; then rm -f "$out.err"; [[ -z "$short" ]] || rm -rf "$short"; return 0; fi
     sleep "$k"
   done
   echo "FATAL: ssearch36 $* failed 3 times: $(tail -2 "$out.err" | tr '\n' ' ')" >&2
+  [[ -z "$short" ]] || rm -rf "$short"
   return 1
 }
 export -f ss_retry

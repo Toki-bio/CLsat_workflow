@@ -217,6 +217,15 @@ def check_files(cfg: Config, report: Report) -> None:
         report.add(OK, "out_dir", f"will be created: {out}")
     else:
         report.add(WARN, "out_dir", f"parent directory does not exist: {out}")
+    # FASTA36 (ssearch36) cannot open a file whose path is 120+ characters. The expansion/scan script passes long
+    # paths through short symlinks; the other stages put files at most ~45 characters below out_dir or TMPDIR.
+    for what, p in (("out_dir", os.path.abspath(out)), ("TMPDIR", os.path.abspath(os.environ.get("TMPDIR") or "/tmp"))):
+        if len(p) > MAX_BASE_PATH:
+            report.add(FAIL, "paths", f"{what} is {len(p)} characters ({p}); keep it at most {MAX_BASE_PATH}, "
+                                      "or ssearch36 cannot open the files below it (path limit 119)")
+
+
+MAX_BASE_PATH = 70
 
 
 def check_tools(cfg: Optional[Config], report: Report) -> None:

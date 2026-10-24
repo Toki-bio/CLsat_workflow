@@ -106,3 +106,11 @@ def test_cli_exit_codes(project, capsys):
 def test_probe_all_runs_without_crashing():
     probes = probe_all({})
     assert len(probes) == len(TOOLS)
+
+
+def test_long_out_dir_fails(project, monkeypatch):
+    # ssearch36 cannot open a file whose path is 120+ characters; a run folder that leaves no room fails the check
+    import satpipe.check
+    d, cfg = project
+    monkeypatch.setattr(satpipe.check, "MAX_BASE_PATH", 20)
+    assert cli.main(["check", str(cfg), "--no-tools"]) == 1

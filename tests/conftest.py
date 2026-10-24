@@ -9,6 +9,14 @@ def write(p, s):
     return p
 
 
+@pytest.fixture(autouse=True)
+def _long_tmp_paths_allowed(monkeypatch):
+    """pytest's temp folders are longer than the out_dir limit that protects ssearch36 (satpipe.check.MAX_BASE_PATH);
+    the fixtures never run ssearch36, so the limit is lifted here and tested on its own in test_check.py."""
+    import satpipe.check
+    monkeypatch.setattr(satpipe.check, "MAX_BASE_PATH", 10000)
+
+
 @pytest.fixture
 def project(tmp_path):
     """A tiny synthetic project: two genomes, their TRF .dat, one family, curated table."""
