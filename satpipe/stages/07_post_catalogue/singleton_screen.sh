@@ -64,7 +64,7 @@ awk '/^>/{if(s)print h"\n"s s; h=$0; s=""; next}{s=s$0}END{print h"\n"s s}' \
     "$REF" > ref_doubled.fa
 
 # --- 3. search every singleton against all families --------------------------
-ssearch36 -n -m 8C -E 100 -b 5000 singletons.fa ref_doubled.fa 2>/dev/null > sing_vs_ref.tsv
+ssearch36 -n -z 3 -m 8C -E 100 -b 5000 singletons.fa ref_doubled.fa 2>/dev/null > sing_vs_ref.tsv
 
 # best family per singleton locus
 awk '!/^#/{if($12>b[$1]){b[$1]=$12; f[$1]=$2}}

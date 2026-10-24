@@ -123,7 +123,7 @@ def best_bits(query_seq, fam):
     q = '%s/_q.fa' % OUT
     with open(q, 'w') as f:
         f.write('>q\n%s\n' % query_seq)
-    r = run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1', q, '%s/%s.doubled.fa' % (OUT, fam)])
+    r = run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', q, '%s/%s.doubled.fa' % (OUT, fam)])
     best = 0.0
     for line in r.stdout.splitlines():
         if line.startswith('#'):

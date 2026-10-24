@@ -59,7 +59,7 @@ while IFS=$'\t' read -r lid kind sp scf rs re trunc explen; do
   # ssearch36: query=region, library=doubled consensus
   # -m 8C tabular: qid sid pid alen mm go qs qe ss se ev bits
   # awk, not grep -v: with no hit grep exits 1, and pipefail + set -e killed the stage instead of writing the NA row
-  res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
+  res=$(ssearch36 -n -z 3 -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
   [ -z "$res" ] && { printf '%s\t%s\t%s\tNA\tNA\tNA\tNA\t%d\n' "$lid" "$kind" "$subt" "$qlen" >> "$OUT"; continue; }
   pid=$(echo "$res" | cut -f3)
   alen=$(echo "$res" | cut -f4)

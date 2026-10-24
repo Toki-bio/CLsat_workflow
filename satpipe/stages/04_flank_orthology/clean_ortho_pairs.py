@@ -174,7 +174,7 @@ with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
         f.write('>%d_%s\n%s\n' % (i, side, seq))
 # ssearch36 (NOT blastn) vs the doubled consensuses; drop a flank with any strong satellite hit
-o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
+o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
                     OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
 sat_drop = set()
 for line in o.splitlines():
@@ -198,7 +198,7 @@ with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
         f.write('>%d_%s\n%s\n' % (i, side, seq))
 # all-vs-all with ssearch36 (both strands). library = the same file.
-o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1e-3', '-b', '2000', OUT + '/uflanks.fa',
+o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '2000', OUT + '/uflanks.fa',
                     OUT + '/uflanks.fa'], capture_output=True, text=True).stdout
 best = collections.defaultdict(dict)     # query -> target_assembly -> (bits, target_id, pid, alen)
 for line in o.splitlines():

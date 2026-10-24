@@ -248,7 +248,9 @@ ss_retry(){
     fi
   done
   for k in 1 2 3; do
-    if ssearch36 "${args[@]}" > "$out" 2> "$out.err"; then rm -f "$out.err"; [[ -z "$short" ]] || rm -rf "$short"; return 0; fi
+    # -z 3: fixed (Altschul-Gish) statistics. With a one-sequence library ssearch36 otherwise fits lambda/K from
+    # random shuffles, so the same window scored up to +-10% differently from run to run (2026-10-25)
+    if ssearch36 -z 3 "${args[@]}" > "$out" 2> "$out.err"; then rm -f "$out.err"; [[ -z "$short" ]] || rm -rf "$short"; return 0; fi
     sleep "$k"
   done
   echo "FATAL: ssearch36 $* failed 3 times: $(tail -2 "$out.err" | tr '\n' ' ')" >&2

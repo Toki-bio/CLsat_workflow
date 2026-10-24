@@ -166,7 +166,7 @@ print('unique anchor flanks (pre-residual-drop): %d' % len(flanks), flush=True)
 with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
         f.write('>%d_%s\n%s\n' % (i, side, seq))
-o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
+o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
                     OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
 sat_drop = set()
 for line in o.splitlines():
@@ -189,7 +189,7 @@ print('after residual-satellite drop: %d unique anchors' % len(flanks), flush=Tr
 with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
         f.write('>%d_%s\n%s\n' % (i, side, seq))
-o = subprocess.run([SS, '-n', '-m', '8C', '-E', '1e-3', '-b', '4000', OUT + '/uflanks.fa',
+o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '4000', OUT + '/uflanks.fa',
                     OUT + '/uflanks.fa'], capture_output=True, text=True).stdout
 
 # collect all cross-assembly hits with alen>=MIN_ALN (threshold on pid applied later per-level)

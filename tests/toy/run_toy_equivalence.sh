@@ -20,7 +20,11 @@ declare -A MONO=([CLsat1]=146 [CLsat2]=145 [CLsat3]=146 [CLsat4]=116)
 JOBS="${JOBS:-8}"
 fail=0
 # the original scripts call `awk` and need gawk features (asorti); make sure awk IS gawk here
-mkdir -p "$W/bin"; ln -sf "$(command -v gawk)" "$W/bin/awk"; export PATH="$W/bin:$PATH"
+mkdir -p "$W/bin"; ln -sf "$(command -v gawk)" "$W/bin/awk"
+# both chains score with fixed statistics (-z 3): the new chain passes it itself (2026-10-25), the published scripts
+# did not and used ssearch36's random shuffle statistics, so without this shim their bits differ by ~30 %
+SS_REAL="$(command -v ssearch36)"; printf '#!/bin/sh\nexec "%s" -z 3 "$@"\n' "$SS_REAL" > "$W/bin/ssearch36"; chmod +x "$W/bin/ssearch36"
+export PATH="$W/bin:$PATH"
 for t in trf vsearch mafft ssearch36 gawk parallel samtools bedtools python3; do command -v $t >/dev/null || { echo "$t not on PATH" >&2; exit 2; }; done
 cmpf(){ # cmpf <label> <old> <new>
   if cmp -s "$2" "$3"; then echo "  same   $1"; else echo "  DIFF   $1 ($2 vs $3)"; fail=1; fi

@@ -119,7 +119,7 @@ for cid, s in sorted(summary.items()):
     for name in ss:
         if FAMOF.get(name) != fam:
             continue
-        o = run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1', '%s/_ssq.fa' % OUT, '%s/ss_%s.fa' % (OUT, name)]).stdout
+        o = run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', '%s/_ssq.fa' % OUT, '%s/ss_%s.fa' % (OUT, name)]).stdout
         best = 0.0
         pid = 0.0
         for line in o.splitlines():

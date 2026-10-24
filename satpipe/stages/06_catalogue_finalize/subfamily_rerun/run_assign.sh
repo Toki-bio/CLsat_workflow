@@ -55,7 +55,7 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
   for sub in ${FAMSUBS[$major]:-}; do
     consx=$SUBX/${sub}.fa
     [ -s "$consx" ] || continue
-    res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
+    res=$(ssearch36 -n -z 3 -m 8C -E 1000 $tmpq.fa "$consx" 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
     [ -z "$res" ] && continue
     bits=$(echo "$res" | cut -f12)
     pid=$(echo "$res" | cut -f3)

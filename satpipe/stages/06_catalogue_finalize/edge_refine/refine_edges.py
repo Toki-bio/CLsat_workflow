@@ -115,7 +115,7 @@ def sat_cov(seq, lib, wlen, step, cov=None):
         for i in range(0, len(seq) - wlen + 1, step):
             f.write('>w%d\n%s\n' % (i, seq[i:i + wlen]))
         q = f.name
-    o = subprocess.run([SS, '-n', '-m', '8C', '-E', '100000', '-b', '1', '-d', '1', q, lib],
+    o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '100000', '-b', '1', '-d', '1', q, lib],
                        capture_output=True, text=True).stdout
     os.unlink(q)
     best = {}

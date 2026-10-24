@@ -125,7 +125,7 @@ def scan_runs(genome, scaf, s, e, consensus_files, win=150, min_aln=80, min_id=8
         for p in consensus_files:
             c = ''.join(l.strip() for l in open(p) if not l.startswith('>')).upper()
             f.write('>%s\n%s\n' % (os.path.basename(p).split('.')[0], c + c))
-    res = subprocess.run(['ssearch36', '-n', '-m', '8', '-E', '1000', '-b', '1', '-d', '1', qf, lf],
+    res = subprocess.run(['ssearch36', '-n', '-z', '3', '-m', '8', '-E', '1000', '-b', '1', '-d', '1', qf, lf],
                          capture_output=True, text=True).stdout
     hit = set()
     for line in res.splitlines():

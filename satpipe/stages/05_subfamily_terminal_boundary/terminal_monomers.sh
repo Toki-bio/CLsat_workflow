@@ -89,7 +89,7 @@ while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
     [ "$qlen" -lt 20 ] && continue
     printf '>q\n%s\n' "$(cat $tmpq.seq)" > $tmpq.fa
     # best alignment of the window against the doubled consensus, either strand
-    res=$(ssearch36 -n -m 8C -E 100 $tmpq.fa $consx 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
+    res=$(ssearch36 -n -z 3 -m 8C -E 100 $tmpq.fa $consx 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
     if [ -z "$res" ]; then
       printf '%s\t%s\t%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$subt" "$mono" "$END" >> "$OUT"
       continue

@@ -86,7 +86,7 @@ def faidx(sp, scaf, x, y):
 def bits(seq, fam):
     with open('%s/_q5.fa' % OUT, 'w') as f:
         f.write('>q\n%s\n' % seq)
-    o = run([SS, '-n', '-m', '8C', '-E', '1000', '-b', '1', '%s/_q5.fa' % OUT, '%s/%s.doubled.fa' % (OUT, fam)]).stdout
+    o = run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', '%s/_q5.fa' % OUT, '%s/%s.doubled.fa' % (OUT, fam)]).stdout
     best = 0.0
     for line in o.splitlines():
         if not line.startswith('#'):

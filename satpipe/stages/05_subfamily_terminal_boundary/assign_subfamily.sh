@@ -59,7 +59,7 @@ while IFS=$'\t' read -r lid scf s0 e sp major mono; do
     # every listed sub-subfamily must have its consensus: a missing one would silently narrow the choice
     [ -s "$consx" ] || { echo "FATAL: sub-subfamily $sub of $major (members.tsv) has no consensus file $consx" >&2; exit 1; }
     # awk, not grep -v: no hit must give an empty result, not a pipefail exit
-    res=$(ssearch36 -n -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
+    res=$(ssearch36 -n -z 3 -m 8C -E 1000 $tmpq.fa "$consx" | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
     [ -z "$res" ] && continue
     bits=$(echo "$res" | cut -f12)
     pid=$(echo "$res" | cut -f3)

@@ -60,7 +60,7 @@ awk '/^>/{if(s)print h"\n"s s; h=$0; s=""; next}{s=s$0}END{print h"\n"s s}' \
     "$DARSAT" > darsat_doubled.fa
 
 # --- 3. all-vs-all and tally the best family per clone ----------------------
-ssearch36 -n -m 8C -E 10 -b 5000 imotaq.fasta darsat_doubled.fa 2>/dev/null > hits.tsv
+ssearch36 -n -z 3 -m 8C -E 10 -b 5000 imotaq.fasta darsat_doubled.fa 2>/dev/null > hits.tsv
 
 echo
 echo "best DarSat family per IMO-TaqI clone, tallied:"

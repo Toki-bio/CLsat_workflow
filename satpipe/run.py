@@ -617,7 +617,7 @@ def st_assign(ctx: Ctx):
         for fam, fd in ctx.cfg.families.items():
             s = ''.join(l.strip() for l in open(fd['consensus']) if not l.startswith('>')).upper()
             f.write('>%s\n%s%s\n' % (fam, s, s))
-    r = subprocess.run([ctx.tool('ssearch36'), '-n', '-m', '8C', '-E', '1000', '-b', '1', '-d', '1', q, lib],
+    r = subprocess.run([ctx.tool('ssearch36'), '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', '-d', '1', q, lib],
                        capture_output=True, text=True, env=ctx.env())
     best = {}
     for line in r.stdout.splitlines():
