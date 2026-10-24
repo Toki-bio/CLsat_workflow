@@ -4,7 +4,7 @@
 Two fake genomes (codes spa, spb) with planted tandem arrays of the four real CLsat consensuses
 (146/145/146/116 bp) in random background sequence, including:
   * ordinary arrays of 12-60 mutated copies per family and species,
-  * one composite array (CLsat1 block followed by a CLsat3 block) to exercise segmentation,
+  * one composite array (100-unit CLsat1 block followed by a 100-unit CLsat3 block) to exercise segmentation,
   * one orthologous pair: the same unique 1.5 kb flanks around an array in spa and in spb.
 Also writes genomes.tsv, families.tsv (family mono consensus), members.tsv, a subx/ directory
 of DOUBLED sub-subfamily consensuses, and refs.rot (Step-5 rotated references for Step 8).
@@ -126,9 +126,12 @@ with open(os.path.join(a.out, 'genomes.tsv'), 'w') as gt:
                 truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(s)}\tdimer\tCLsat4\t60\n')
                 parts.append(s); pos += len(s)
             else:
-                s1 = array('CLsat1', 40, 0.03); s3 = array('CLsat3', 40, 0.03)
-                truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(s1)}\tcomposite\tCLsat1\t40\n')
-                truth.write(f'{sp}\t{chrom}\t{pos+len(s1)}\t{pos+len(s1)+len(s3)}\tcomposite\tCLsat3\t40\n')
+                # 100 units per block (~14.6 kb): segmentation splits only when the other family dominates
+                # >= SEG_MIN_RUN (10) bins of SEG_BIN (1 kb); with 40 units (5.8 kb) it never fired, so the toy
+                # did not exercise segmentation at all (found 2026-10-24)
+                s1 = array('CLsat1', 100, 0.03); s3 = array('CLsat3', 100, 0.03)
+                truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(s1)}\tcomposite\tCLsat1\t100\n')
+                truth.write(f'{sp}\t{chrom}\t{pos+len(s1)}\t{pos+len(s1)+len(s3)}\tcomposite\tCLsat3\t100\n')
                 parts.append(s1 + s3); pos += len(s1) + len(s3)
         # orthologous pair: shared unique flanks around a CLsat2 array
         bg = rand_seq(gap); parts.append(bg); pos += len(bg)
