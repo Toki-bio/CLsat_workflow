@@ -25,6 +25,10 @@ ap.add_argument('--size', type=int, default=1200000, help='background length per
 ap.add_argument('--dimer', action='store_true',
                 help='also plant one 2-unit higher-order CLsat4 array per genome (TRF reports it at 232; Step 3b test). '
                      'Off by default so the equivalence toy is unchanged.')
+ap.add_argument('--same-names', action='store_true',
+                help='give both genomes the SAME contig names (chr1, scaf2) and plant a twin pair of arrays of different '
+                     'families at the same coordinates in both, so any step that matches by contig name without the genome '
+                     'mixes or mislabels them (the split-assembly case: hifiasm h1tg/h2tg names in two animals)')
 a = ap.parse_args()
 random.seed(a.seed)
 os.makedirs(a.out, exist_ok=True)
@@ -98,7 +102,14 @@ with open(os.path.join(a.out, 'genomes.tsv'), 'w') as gt:
         parts = []
         pos = 0
         gap = a.size // (len(feats) + 2)
-        chrom = f'{sp}_chr1'
+        chrom = 'chr1' if a.same_names else f'{sp}_chr1'
+        if a.same_names:
+            # twin arrays at identical coordinates in both genomes, different families (CLsat1 in spa, CLsat4 in spb)
+            random.seed(a.seed + 1000); bg = rand_seq(20000); random.seed(a.seed + (1 if sp == 'spa' else 2))
+            tw = array('CLsat1' if sp == 'spa' else 'CLsat4', 40, 0.03)
+            parts.append(bg); pos += len(bg)
+            truth.write(f'{sp}\t{chrom}\t{pos}\t{pos+len(tw)}\ttwin\t{"CLsat1" if sp == "spa" else "CLsat4"}\t40\n')
+            parts.append(tw); pos += len(tw)
         for feat in feats:
             bg = rand_seq(gap)
             parts.append(bg); pos += len(bg)
@@ -134,7 +145,7 @@ with open(os.path.join(a.out, 'genomes.tsv'), 'w') as gt:
             for i in range(0, len(seq), 80):
                 f.write(seq[i:i + 80] + '\n')
             small = rand_seq(20000)
-            f.write(f'>{sp}_scaf2\n')
+            f.write('>scaf2\n' if a.same_names else f'>{sp}_scaf2\n')
             for i in range(0, len(small), 80):
                 f.write(small[i:i + 80] + '\n')
         gt.write(f'{sp}\t{os.path.abspath(fa)}\n')
