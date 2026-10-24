@@ -40,13 +40,11 @@ ap.add_argument('--order', default='')
 ap.add_argument('--colours', default='')
 a = ap.parse_args()
 
-# ---- scaffold -> species from MASTER.merged.bed ---------------------------
-scf2sp = {}
+# ---- species order from MASTER.merged.bed (names start with the genome code) ----
 species_seen = []
 for r in csv.reader(open(a.master_bed, encoding='utf-8'), delimiter='\t'):
     if len(r) >= 4:
         sp = r[3].split('|')[0]
-        scf2sp[r[0]] = sp
         if sp not in species_seen:
             species_seen.append(sp)
 species = a.species.split(',') if a.species else species_seen
@@ -58,7 +56,10 @@ if len(species_label) != len(species):
 asm, bed_total = {}, collections.Counter()
 for r in csv.reader(open(a.segmented_bed, encoding='utf-8'), delimiter='\t'):
     if len(r) >= 4:
-        sp = scf2sp.get(r[0], '?')
+        # col 5 = the locus's genome (stage 14); never looked up by contig name, which two genomes may share
+        if len(r) < 5:
+            sys.exit('segmented BED row without genome column (col 5); rerun from 14_arbitrate: %s' % r)
+        sp = r[4]
         asm[r[3]] = sp
         bed_total[sp] += 1
 

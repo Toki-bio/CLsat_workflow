@@ -191,9 +191,11 @@ for fam in $FAMS; do
   cmpnum "step13 $fam bits" <(sort "$O/scan/MASTER_$fam.bits.tsv") <(sort "$N/scan/MASTER_$fam.bits.tsv") 1,2,4,5 3
 done
 cmpf "step12 MASTER" "$O/out/MASTER.merged.bed" "$N/master/MASTER.merged.bed"
-for f in MASTER.loci.bed MASTER.loci.segmented.bed MASTER.locus_provenance.segmented.tsv; do
-  cmpf "step14 $f" "$O/arb/$f" "$N/arb/$f"
+for f in MASTER.loci.bed MASTER.loci.segmented.bed; do
+  # the new chain adds the genome as col 5 (genomes may share contig names); cols 1-4 must equal the published chain
+  cmpf "step14 $f (cols 1-4)" <(cut -f1-4 "$O/arb/$f") <(cut -f1-4 "$N/arb/$f")
 done
+cmpf "step14 MASTER.locus_provenance.segmented.tsv" "$O/arb/MASTER.locus_provenance.segmented.tsv" "$N/arb/MASTER.locus_provenance.segmented.tsv"
 cmpnum "step14 MASTER.locus_bits.tsv" "$O/arb/MASTER.locus_bits.tsv" "$N/arb/MASTER.locus_bits.tsv" 1 2,3,4,5
 cmpnoise(){ # cmpnoise <label> <mode> <old> <new>
   if python3 "$REPO/tests/toy/compare_noise.py" "$2" "$3" "$4" --tol "$TOL"; then echo "  same~  $1 (bits-derived values within noise)"; else echo "  DIFF   $1"; fail=1; fi

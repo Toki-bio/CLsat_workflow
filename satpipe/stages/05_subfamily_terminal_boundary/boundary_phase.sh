@@ -45,7 +45,7 @@ while IFS=$'\t' read -r lid kind sp scf rs re trunc explen; do
   [ "$kind" = "LB" ] || [ "$kind" = "RB" ] || continue
   [ "$rs" = "0" ] && continue
   # family + mono for this locus
-  read -r _ _ _ _ _ subt mono < <(grep -P "^${lid}\t" "$MASTER")
+  read -r _ _ _ _ _ subt mono < <(awk -F'\t' -v L="$lid" '$1==L{print; exit}' "$MASTER")   # exact id (L12.1 is not a pattern)
   [ -s "$WORK/cons_x/${subt}.x.fa" ] || continue
   hdr="${sp}|${scf}:${rs}-${re}"
   # extract region sequence

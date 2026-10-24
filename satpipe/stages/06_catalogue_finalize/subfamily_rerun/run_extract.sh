@@ -40,9 +40,12 @@ done
 
 while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
   genome="${G[$sp]:-}"
-  [ -z "$genome" ] && { echo "WARN species $sp of $lid not in $GENOMES" >&2; continue; }
+  # a locus whose genome, contig or coordinates do not fit its genome is a catalogue error (once: a locus of one
+  # genome filed under another that shares the contig name); stop instead of silently skipping its regions
+  [ -z "$genome" ] && { echo "FATAL: genome $sp of $lid not in $GENOMES" >&2; exit 1; }
   scaflen=$(get_scaflen "$genome" "$scf")
-  [ -z "$scaflen" ] && { echo "WARN no scaflen $lid $scf" >&2; continue; }
+  [ -z "$scaflen" ] && { echo "FATAL: contig $scf of $lid not in genome $sp ($genome)" >&2; exit 1; }
+  [ "$e" -gt "$scaflen" ] && { echo "FATAL: $lid ends at $e beyond contig $scf of genome $sp (length $scaflen)" >&2; exit 1; }
 
   lf_s1=$(( s0 - FLANK + 1 )); lf_e=$(( s0 ))
   lf_trunc=0

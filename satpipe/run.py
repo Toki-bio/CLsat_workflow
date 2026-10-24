@@ -791,6 +791,11 @@ def st_catalogue(ctx: Ctx):
                 f.write('\t'.join(p[:4] if len(p) >= 4 else p[:3] + ['MANUAL']) + '\n')
         # bits of the manual loci against every family (scan-only), max per locus
         maxbits = {i: {} for i in range(len(rows))}
+        # genome of each manual locus: its name `sp|...` (the expansion script finds the genome the same way)
+        msp = [(p[3].split('|', 1)[0] if len(p) >= 4 and '|' in p[3] else '') for p in rows]
+        bad = [p[:4] for p, g in zip(rows, msp) if g not in ctx.cfg.genomes]
+        if bad:
+            raise StageError('15_catalogue: manual loci need a name `<genome>|...` with a genome of the config: %s' % bad[:3])
         for fam in ctx.families:
             pre = os.path.join(cat, 'manual_' + fam)
             ctx.sh(_expand_cmd(ctx, mbed, fam, pre, True), '15_catalogue', log_name='15_catalogue_' + fam)
@@ -800,7 +805,7 @@ def st_catalogue(ctx: Ctx):
                     out.write(line)
                     p = line.rstrip('\n').split('\t')
                     for i, r in enumerate(rows):
-                        if p[0] == r[0] and int(r[1]) < int(p[1]) <= int(r[2]):
+                        if p[0] == r[0] and p[3].split('|', 1)[0] == msp[i] and int(r[1]) < int(p[1]) <= int(r[2]):
                             maxbits[i][fam] = max(maxbits[i].get(fam, 0.0), float(p[2]))
         with open(os.path.join(cat, 'MASTER.merged.bed'), 'a') as mb, open(os.path.join(cat, 'MASTER.loci.bed'), 'a') as lb, \
              open(os.path.join(cat, 'MASTER.loci.segmented.bed'), 'a') as sb, open(os.path.join(cat, 'MASTER.locus_bits.tsv'), 'a') as bb, \
@@ -813,8 +818,8 @@ def st_catalogue(ctx: Ctx):
                 others = sorted(((b, f) for f, b in bits.items() if f != fam), reverse=True)
                 best_other, best_bits = (others[0][1], others[0][0]) if others else ('', 0.0)
                 mb.write('%s\t%s\t%s\t%s\tMANUAL\n' % (p[0], p[1], p[2], name))
-                lb.write('%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], lid))
-                sb.write('%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], lid))
+                lb.write('%s\t%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], lid, msp[i]))
+                sb.write('%s\t%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], lid, msp[i]))
                 bb.write(lid + ''.join('\t%s' % ('%g' % bits.get(f, 0.0)) for f in ctx.families) + '\n')
                 fa.write('%s\t%s\t%g\t%s\t%g\t%g\tMANUAL\tMANUAL\n' % (lid, fam, bits.get(fam, 0.0), best_other, best_bits, bits.get(fam, 0.0) - best_bits))
                 added.append({'locus': lid, 'bed': p[:4], 'family': fam, 'bits': bits})

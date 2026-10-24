@@ -78,13 +78,17 @@ awk -v M="$MIN_BITS" '$3>=M' sing_best.tsv
 # --- 4. which of those are already inside a catalogued locus? ----------------
 if [ -n "$BED" ] && [ -f "$BED" ]; then
   command -v bedtools >/dev/null || { echo "bedtools not in PATH" >&2; exit 1; }
+  # both sides keyed by genome|contig (the header and the catalogue tag both start `sp|`): genomes may share
+  # contig names, and a singleton of one genome must not count as covered by a locus of another
   awk -v M="$MIN_BITS" '$3>=M{print $1}' sing_best.tsv \
-    | awk -F'|' '{split($2,a,":"); split(a[2],b,"-"); print a[1]"\t"b[1]-1"\t"b[2]"\t"$0}' \
+    | awk -F'|' '{split($2,a,":"); split(a[2],b,"-"); print $1"|"a[1]"\t"b[1]-1"\t"b[2]"\t"$0}' \
     | sort -k1,1 -k2,2n > hits.bed
+  awk 'BEGIN{FS=OFS="\t"}{ i=index($4,"|"); if(i<2){ print "FATAL: catalogue row without genome code: " $4 > "/dev/stderr"; exit 1 }
+    print substr($4,1,i-1)"|"$1,$2,$3,$4 }' "$BED" | sort -k1,1 -k2,2n > catalogue.key.bed
   echo
   echo "hits already covered by a catalogued locus:"
-  bedtools intersect -a hits.bed -b <(sort -k1,1 -k2,2n "$BED") -u | cut -f4
+  bedtools intersect -a hits.bed -b catalogue.key.bed -u | cut -f4
   echo
   echo "hits ABSENT from the catalogue (candidates for inspection):"
-  bedtools intersect -a hits.bed -b <(sort -k1,1 -k2,2n "$BED") -v | cut -f4 | tee candidates_absent.txt
+  bedtools intersect -a hits.bed -b catalogue.key.bed -v | cut -f4 | tee candidates_absent.txt
 fi

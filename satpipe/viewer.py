@@ -58,16 +58,16 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
     codes = list(cfg.genomes)
     say = lambda s: print(s, flush=True)
 
-    # scaffold -> species (from the pipeline MASTER, whose names start with the code)
-    scf2sp = {}
-    for p in read_tsv(os.path.join(cat, 'MASTER.merged.bed'), 4):
-        scf2sp[p[0]] = p[3].split('|')[0]
-
     # ---- 1. catalogue BED in viewer format: scf start end sp|scf:start1-end|lid --------------
+    # the genome of each locus is col 5 of the segmented catalogue (never looked up by contig name:
+    # genomes may share contig names)
     rows = []
-    for p in read_tsv(os.path.join(cat, 'MASTER.loci.segmented.bed'), 4):
-        sp = scf2sp.get(p[0], '?')
-        rows.append((p[0], int(p[1]), int(p[2]), sp, p[3]))
+    seg = read_tsv(os.path.join(cat, 'MASTER.loci.segmented.bed'))
+    if any(len(p) < 5 for p in seg):
+        raise SystemExit('viewer: MASTER.loci.segmented.bed has no genome column (col 5); it was written by an older '
+                         'satpipe. Rerun from 14_arbitrate.')
+    for p in seg:
+        rows.append((p[0], int(p[1]), int(p[2]), p[4], p[3]))
     # candidates from stage 20 (optional)
     cand = None
     cpath = os.path.join(run_dir, 'candidates', 'candidates_summary.json')
@@ -121,7 +121,7 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                     f.write('%s\t%d\t%d\t%s|%s:%d-%d|FLANK\n' % (scf, a, b, sp, scf, a + 1, b))
         tmp = os.path.join(out, 'MASTER_flank.bits.tsv')
         with open(tmp, 'w') as fo:
-            fo.write('scaffold\tpos\tbits\tclsat\n')
+            fo.write('scaffold\tpos\tbits\tclsat\tspecies\n')   # species: the genome (prefix of the scan name)
             for fam in fams:
                 pre = os.path.join(fdir, 'flank_' + fam)
                 if not os.path.isfile(pre + '.bits.tsv'):
@@ -131,8 +131,8 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                     fi.readline()
                     for line in fi:
                         p = line.rstrip('\n').split('\t')
-                        if len(p) >= 3:
-                            fo.write('%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], fam))
+                        if len(p) >= 4:
+                            fo.write('%s\t%s\t%s\t%s\t%s\n' % (p[0], p[1], p[2], fam, p[3].split('|', 1)[0]))
             cf = os.path.join(run_dir, 'candidates', 'CAND_FLANK.bits.tsv')
             if cand and os.path.isfile(cf):
                 # candidate_flank5k.py scans each candidate's flanks with its called family;
@@ -140,7 +140,7 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                 call_of = {'%s|%s:%d-%d' % (s['sp'], s['scf'], s['start'] + 1, s['end']): s['call'] for s in cand['summary'].values()}
                 for p in read_tsv(cf, 4):
                     fam0 = call_of.get(p[3].rsplit('|', 1)[0], fams[0])
-                    fo.write('%s\t%d\t%s\t%s\n' % (p[0], int(p[1]) + 1, p[2], fam0))
+                    fo.write('%s\t%d\t%s\t%s\t%s\n' % (p[0], int(p[1]) + 1, p[2], fam0, p[3].split('|', 1)[0]))
         _gzip(tmp, tmp + '.gz')
         os.remove(tmp)
 
@@ -173,12 +173,12 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
     # ---- 7. scaffold lengths, consensuses ---------------------------------------------------
     with open(os.path.join(out, 'scaffold_lengths.tsv'), 'w') as f:
         f.write('scaffold\tlength\tspecies\n')
-        seen = set()
+        want = {(sp, scf) for scf, s, e, sp, lid in rows}   # one row per genome + contig holding a locus
         for code, g in cfg.genomes.items():
             for line in open(g + '.fai'):
                 p = line.split('\t')
-                if p[0] in scf2sp and p[0] not in seen:
-                    seen.add(p[0]); f.write('%s\t%s\t%s\n' % (p[0], p[1], code))
+                if (code, p[0]) in want:
+                    f.write('%s\t%s\t%s\n' % (p[0], p[1], code))
     cons = {}
     for fam, fd in cfg.families.items():
         shutil.copyfile(fd['consensus'], os.path.join(out, fam + '.cons.fa'))

@@ -2383,7 +2383,9 @@ function parsePerWindowBits(text, clsat){
     const scf = p[0];
     const pos = +p[1];
     const b = +p[2];
-    rows.push({scf, pos, bits: b, clsat});
+    // the genome is the name's prefix (sp|scf:start-end|tag): genomes may share contig names
+    const sp = (p[3] || "").split("|")[0];
+    rows.push({scf, sp, pos, bits: b, clsat});
   }
   return rows;
 }
@@ -2412,10 +2414,11 @@ function buildIndexes(){
 
 function buildPerWindowIndex(rows){
   for (const r of rows){
-    if (!perWindowByScaffold.has(r.scf)){
-      perWindowByScaffold.set(r.scf, []);
+    const k = key(r.sp, r.scf);   // genome + contig: two genomes may share a contig name
+    if (!perWindowByScaffold.has(k)){
+      perWindowByScaffold.set(k, []);
     }
-    perWindowByScaffold.get(r.scf).push(r);
+    perWindowByScaffold.get(k).push(r);
   }
 }
 
@@ -2667,8 +2670,8 @@ function drawOverview(){
   // floor, so they belong on the chart as background. Without them the space between loci
   // rendered as empty black, which reads as "never examined" when it actually means "examined
   // and nothing there" -- the same distinction the flank scan exists to make.
-  const scfData = (perWindowByScaffold.get(scf) || [])
-    .concat(flankWindowByScaffold.get(scf) || []);
+  const scfData = (perWindowByScaffold.get(key(sp, scf)) || [])
+    .concat(flankWindowByScaffold.get(key(sp, scf)) || []);
   
   // Group by uniform display bins — snap all CLsat positions to a common grid
   // so bars from different CLsats at the same genomic region are grouped together
@@ -2837,7 +2840,7 @@ function renderOverview(){
   // A locus that runs into the end of its scaffold is TRUNCATED BY THE ASSEMBLY: that
   // boundary is not a biological array end and must not be read as one. Mark both the
   // scaffold ends and any locus that reaches them.
-  const L = scafLen.get(currentOver.scf);
+  const L = scafLen.get(key(currentOver.sp, currentOver.scf));
   const edges = [];
   if (L){
     if (0 >= xmin && 0 <= xmax)  edges.push({x: 0, side: "start"});
@@ -3055,7 +3058,7 @@ const FLAG_TOOLTIPS = {
 function drawDetailForLocus(l){
   initDetailChart();
 
-  const scfData = perWindowByScaffold.get(l.scf) || [];
+  const scfData = perWindowByScaffold.get(key(l.sp, l.scf)) || [];
   // Filter to locus region
   const inLocus = scfData.filter(r => r.pos >= l.start && r.pos <= l.end);
   // …plus the flanks, so the array edge is shown against the surrounding background rather
@@ -3068,7 +3071,7 @@ function drawDetailForLocus(l){
   // full width fits in its interval and so always stopped ~2 monomers short of the boundary,
   // leaving a black gap beside every locus. Those inward windows are real locus sequence and
   // are classified as inside by the usual bounds test below.
-  const flankBits = (flankWindowByScaffold.get(l.scf) || []).filter(
+  const flankBits = (flankWindowByScaffold.get(key(l.sp, l.scf)) || []).filter(
     r => r.pos >= l.start - FLANK_VIEW && r.pos <= l.end + FLANK_VIEW);
   // Windows from the MAIN tracks that fall in the flank view but outside this locus belong
   // to a NEIGHBOURING locus -- for a segmented array the piece next door is real satellite,
@@ -3242,7 +3245,7 @@ function renderDetail(){
   // visible against its flanks). Reporting that domain raw produced starts BELOW ZERO
   // (e.g. "-211" on a locus beginning at 0), i.e. an invalid BED interval that "Copy BED"
   // and "Get FASTA" would then request. Clamp to the scaffold.
-  const _sl = scafLen.get(currentLocus.scf);
+  const _sl = scafLen.get(key(currentLocus.sp, currentLocus.scf));
   let start = Math.max(0, Math.floor(xmin));
   let end   = Math.ceil(xmax);
   if (_sl) end = Math.min(end, _sl);
@@ -3337,7 +3340,7 @@ async function loadViaFetch(){
       const f = line.split("\t");
       if (f.length >= 2){
         const L = +f[1];
-        if (isFinite(L) && L > 0) scafLen.set(f[0], L);
+        if (isFinite(L) && L > 0) scafLen.set(key(f[2] || "", f[0]), L);   // keyed by genome + contig
       }
     }
     console.log(`scaffold lengths: ${scafLen.size}`);
@@ -3355,11 +3358,12 @@ async function loadViaFetch(){
       if (f.length < 4) continue;
       const pos = +f[1], b = +f[2];
       if (!isFinite(pos) || !isFinite(b)) continue;
-      rows.push({scf: f[0], pos, bits: b, clsat: f[3]});
+      rows.push({scf: f[0], sp: f[4] || "", pos, bits: b, clsat: f[3]});   // col 5 = genome
     }
     for (const r of rows){
-      if (!flankWindowByScaffold.has(r.scf)) flankWindowByScaffold.set(r.scf, []);
-      flankWindowByScaffold.get(r.scf).push(r);
+      const k = key(r.sp, r.scf);
+      if (!flankWindowByScaffold.has(k)) flankWindowByScaffold.set(k, []);
+      flankWindowByScaffold.get(k).push(r);
     }
     for (const arr of flankWindowByScaffold.values()) arr.sort((a,b) => a.pos - b.pos);
     console.log(`flank windows: ${rows.length}`);
@@ -3839,7 +3843,7 @@ async function fetchNCBIFasta(accession, start, end) {
   // NCBI E-utilities. seq_start/seq_stop are 1-based inclusive. The tool/email
   // parameters are what NCBI asks every client to send; an api_key is not needed
   // at one request per click (limit without a key: 3 requests/s).
-  const sl = scafLen.get(accession);
+  const sl = scafLen.get(key(currentLocus ? currentLocus.sp : "", accession));
   if (isFinite(sl) && sl > 0 && end > sl) end = sl;
   const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=${encodeURIComponent(accession)}&rettype=fasta&retmode=text&seq_start=${start}&seq_stop=${end}&tool=clsat-viewer&email=toki.sk%40gmail.com`;
   const response = await fetch(url);
@@ -3929,7 +3933,7 @@ function drawBorderMarkers(){
   // If a boundary coincides with the scaffold end it is an ASSEMBLY TRUNCATION, not a
   // biological array end -- the same distinction the scaffold overview marks in red. Say so
   // here too, rather than drawing a generic "array end" over a contig edge.
-  const _L = scafLen.get(l.scf);
+  const _L = scafLen.get(key(l.sp, l.scf));
   const startIsEdge = l.start <= EDGE_TOL;
   const endIsEdge   = _L && l.end >= _L - EDGE_TOL;
   const marks = [
@@ -3944,7 +3948,7 @@ function drawBorderMarkers(){
   // Walk outward from the array edge through CONTIGUOUS flank windows only. Taking the
   // min/max across the view would mark a position that is itself scanned whenever the view
   // happens to span two separate flank runs with an unscanned gap between them.
-  const fpos = (flankWindowByScaffold.get(l.scf) || []).map(r => r.pos);
+  const fpos = (flankWindowByScaffold.get(key(l.sp, l.scf)) || []).map(r => r.pos);
   if (fpos.length){
     const GAP = 2000;   // larger than the ~146 bp window step, smaller than any real gap
     const left = [...new Set(fpos.filter(p => p < l.start))].sort((a,b) => b - a);

@@ -28,9 +28,9 @@ JSON. Conversions live in `make_bed_from_clsats_headers.sh:25`, `clisat_expand_t
 | 11 | `out_<family>.dropped.tsv` | *to document* | | every seed that could not be processed, with a reason; seed count reconciled |
 | 12 | `MASTER.merged.bed` | BED5 `chrom start end tag provenance` | 0-based | tag `code|SCF:START1-END|MASTER` (START1 is 1-based); provenance = comma-joined families |
 | 13 | `MASTER_<family>.bits.tsv` | as `*.bits.tsv` | `pos` 1-based | symmetric rescan, window 2xMONO, step MONO |
-| 14 | `MASTER.loci.bed` | BED4, name `L<n>` | 0-based | `L"NR` over the `LC_ALL=C`-sorted MASTER |
+| 14 | `MASTER.loci.bed` | BED4 + genome (col 5), name `L<n>` | 0-based | `L"NR` over the `LC_ALL=C`-sorted MASTER |
 | 14 | `MASTER.locus_provenance.tsv` | `locus provenance` | | |
-| 14 | `MASTER.loci.segmented.bed` (+ `.short_segments.bed`) | BED4, names `L<n>` or `L<n>.<k>` | 0-based | D3b segmentation; short segments dropped (`short_segments: drop`) or merged |
+| 14 | `MASTER.loci.segmented.bed` (+ `.short_segments.bed`, genome in col 7) | BED4 + genome (col 5), names `L<n>` or `L<n>.<k>` | 0-based | D3b segmentation; short segments dropped (`short_segments: drop`) or merged |
 | 14 | `MASTER.locus_seed_hits.tsv`, `MASTER.locus_seeds.tsv` | *to document* | | seed overlap per locus; `SEED_CONFLICT` marked |
 | 14 | `MASTER.<family>.maxbits.tsv`, `MASTER.locus_bits.tsv` | `locus bits_fam1 ... bits_famN` | | per-locus maxima of the rescan |
 | 14 | `MASTER.final_assignment.tsv` | `locus_id family assigned_bits best_other best_other_bits delta flag provenance` (8 columns, no header in the `.clean.tsv` the viewer reads) | | delta = assigned - strongest other for every flag; flags: `UNIQUE_SEED_ONLY UNIQUE_SEED_WITH_COMPETITOR UNIQUE_SEED_CONTRADICTION SEED_CONFLICT_RESOLVED[_AMBIGUOUS] SEGMENT_RESOLVED[_AMBIGUOUS] NO_SEED_RESOLVED NO_SEED_AMBIGUOUS`; viewer adds `CANDIDATE_UNCATALOGUED` |

@@ -8,7 +8,8 @@ export LC_ALL=C   # byte-order sort: locus numbering must not depend on the loca
 #   families.tsv       one row per family, tab-separated, '#' lines ignored:
 #                        family  MONO  <family>.bits.tsv (stage-13 rescan of MASTER)  <family> seed BED (stage 10)
 #                      The row order fixes the column order of MASTER.locus_bits.tsv.
-#   MASTER.merged.bed  stage-12 output (chrom start end tag [provenance]); locus L<n> = row n
+#   MASTER.merged.bed  stage-12 output (chrom start end tag [provenance]); locus L<n> = row n; the tag
+#                      starts with the genome code (`sp|scf:s-e|...`), as do the seed and bits rows
 #   out_dir            every output goes here (created)
 # Environment (defaults = published Darevskia run):
 #   DELTA          UNIQUE_SEED contradiction threshold                       [20]
@@ -31,6 +32,12 @@ export LC_ALL=C   # byte-order sort: locus numbering must not depend on the loca
 #
 # Output columns (MASTER.final_assignment.tsv): locus_id family assigned_bits best_other
 #                 best_other_bits delta flag provenance(col8)
+#
+# Genomes may share contig names (two hifiasm assemblies both have h1tg000102l). Every interval is
+# therefore keyed internally by `genome|contig` (the *.key.bed files, SEEDS.tagged.bed, <fam>.bits.bed),
+# so seeds, scan windows and segmentation bins of one genome never reach a locus of another. The public
+# MASTER.loci.bed and MASTER.loci.segmented.bed keep contig start end locus and add the genome as col 5
+# (.short_segments.bed: col 7).
 
 die(){ echo "FATAL: $*" >&2; exit 1; }
 check_file(){ [[ -s "$1" ]] || die "Missing: $1"; }
@@ -71,7 +78,9 @@ command -v gawk     >/dev/null || die "gawk not in PATH (asorti)"
 ##############################################################################
 log "D1: assigning locus IDs"
 
-awk 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,"L"NR}' "$MASTER_BED" > "$OUT/MASTER.loci.bed"
+# genome code = the tag up to its first '|'
+awk 'BEGIN{FS=OFS="\t"} { i=index($4,"|"); if(i<2){ print "FATAL: MASTER row " NR " has no genome code in col 4: " $4 > "/dev/stderr"; exit 1 }
+  sp=substr($4,1,i-1); print sp"|"$1,$2,$3,"L"NR > K; print $1,$2,$3,"L"NR,sp }' K="$OUT/MASTER.loci.key.bed" "$MASTER_BED" > "$OUT/MASTER.loci.bed"
 
 if [[ "$HAS_PROV" == "1" ]]; then
   awk 'BEGIN{FS=OFS="\t"}{print "L"NR, ($5?$5:".")}' "$MASTER_BED" \
@@ -80,7 +89,7 @@ else
   awk 'BEGIN{OFS="\t"}{print "L"NR, "."}' "$MASTER_BED" \
     > "$OUT/MASTER.locus_provenance.tsv"
 fi
-check_file "$OUT/MASTER.loci.bed"
+check_file "$OUT/MASTER.loci.bed"; check_file "$OUT/MASTER.loci.key.bed"
 
 ##############################################################################
 # D2
@@ -88,7 +97,8 @@ check_file "$OUT/MASTER.loci.bed"
 log "D2: tagging seeds"
 
 for i in "${!FAMS[@]}"; do
-  awk -v F="${FAMS[$i]}" 'BEGIN{FS=OFS="\t"}{print $1,$2,$3,F}' "${SEEDS[$i]}"
+  awk -v F="${FAMS[$i]}" 'BEGIN{FS=OFS="\t"}{ i=index($4,"|"); if(i<2){ print "FATAL: seed row without genome code: " $4 > "/dev/stderr"; exit 1 }
+    print substr($4,1,i-1)"|"$1,$2,$3,F }' "${SEEDS[$i]}"
 done | sort -k1,1 -k2,2n > "$OUT/SEEDS.tagged.bed"
 check_file "$OUT/SEEDS.tagged.bed"
 
@@ -99,7 +109,8 @@ log "D3: bits TSV -> BED (pos-1; width 2 x MONO)"
 
 for i in "${!FAMS[@]}"; do
   w=$(( 2 * MONOS[i] ))
-  awk -v W="$w" 'BEGIN{FS=OFS="\t"} NR>1{print $1, $2-1, $2-1+W, $3}' "${BITS[$i]}" > "$OUT/${FAMS[$i]}.bits.bed"
+  awk -v W="$w" 'BEGIN{FS=OFS="\t"} NR>1{ i=index($4,"|"); if(i<2){ print "FATAL: bits row without genome code: " $4 > "/dev/stderr"; exit 1 }
+    print substr($4,1,i-1)"|"$1, $2-1, $2-1+W, $3 }' "${BITS[$i]}" > "$OUT/${FAMS[$i]}.bits.bed"
   check_file "$OUT/${FAMS[$i]}.bits.bed"
 done
 
@@ -110,8 +121,8 @@ log "D3b: segmenting composite loci"
 
 FAMBITS_ARGS=()
 for i in "${!FAMS[@]}"; do FAMBITS_ARGS+=("${FAMS[$i]}" "${BITS[$i]}"); done
-python3 - "$OUT/MASTER.loci.bed" "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" \
-  "$OUT/MASTER.loci.segmented.bed" "${FAMBITS_ARGS[@]}" <<'PYEOF'
+python3 - "$OUT/MASTER.loci.key.bed" "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" \
+  "$OUT/MASTER.loci.segmented.key.bed" "${FAMBITS_ARGS[@]}" <<'PYEOF'
 import sys, os
 from collections import defaultdict
 loci_file=sys.argv[1]
@@ -129,7 +140,8 @@ for fam,bf in zip(families,bits_files):
     with open(bf) as f:
         f.readline()
         for line in f:
-            p=line.rstrip("\n").split("\t"); scf,pos,bits=p[0],int(p[1]),float(p[2])
+            p=line.rstrip("\n").split("\t")
+            scf,pos,bits=p[3].split("|",1)[0]+"|"+p[0],int(p[1]),float(p[2])   # genome|contig, as the loci
             b=(pos-1)//BIN   # pos is a 1-based window start; bins are 0-based like the BED (same pos-1 as D3)
             if bits>bins[scf][b][fam]: bins[scf][b][fam]=bits
     print(f"  Loaded {bf} ({fam})",file=sys.stderr)
@@ -190,8 +202,15 @@ print(f"  Original: {len(loci)}, split: {n_split}, output: {total_seg}",file=sys
 print(f"  Short segments (<{MIN_LOCUS} bp) {SEG_SHORT}: {n_short} pieces, {bp_short} bp -> {out_file}.short_segments.bed",file=sys.stderr)
 PYEOF
 
+check_file "$OUT/MASTER.loci.segmented.key.bed"
+LOCI_BED="$OUT/MASTER.loci.segmented.key.bed"
+# public tables: contig start end locus genome (short segments: contig start end locus family action genome)
+awk 'BEGIN{FS=OFS="\t"}{ i=index($1,"|"); sp=substr($1,1,i-1); $1=substr($1,i+1); print $0,sp }' \
+  "$LOCI_BED" > "$OUT/MASTER.loci.segmented.bed"
+awk 'BEGIN{FS=OFS="\t"}{ i=index($1,"|"); sp=substr($1,1,i-1); $1=substr($1,i+1); print $0,sp }' \
+  "$LOCI_BED.short_segments.bed" > "$OUT/MASTER.loci.segmented.bed.short_segments.bed"
+rm -f "$LOCI_BED.short_segments.bed"
 check_file "$OUT/MASTER.loci.segmented.bed"
-LOCI_BED="$OUT/MASTER.loci.segmented.bed"
 
 awk 'BEGIN{FS=OFS="\t"}
 FNR==NR{ prov[$1]=$2; next }

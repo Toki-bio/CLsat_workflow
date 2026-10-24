@@ -11,8 +11,10 @@ set -euo pipefail
 MASTER_BED="$1"; OUT="$2"; WORK="$3"; FAMTAB="$4"
 mkdir -p "$WORK"
 
-# 1. scaffold -> species
-awk -F'\t' '{split($4,a,"|"); print $1"\t"a[1]}' "$MASTER_BED" | sort -u > "$WORK/scf2sp.tsv"
+# 1. the genome of every locus is col 5 of MASTER.loci.segmented.bed (written by stage 14/15). It is never
+#    looked up by contig name: two genomes may share contig names (hifiasm h1tg/h2tg in two animals).
+awk -F'\t' 'NF<5 || $5==""{ print "FATAL: MASTER.loci.segmented.bed row without genome (col 5): " $0 > "/dev/stderr"; bad=1; exit }
+  END{ exit bad }' "$OUT/MASTER.loci.segmented.bed"
 
 # 2. locus -> family
 awk -F'\t' '{print $1"\t"$2}' "$OUT/MASTER.final_assignment.tsv" > "$WORK/locus2subtype.tsv"
@@ -21,8 +23,7 @@ awk -F'\t' '{print $1"\t"$2}' "$OUT/MASTER.final_assignment.tsv" > "$WORK/locus2
 grep -v '^#' "$FAMTAB" | awk -F'\t' 'NF>=2{print $1"\t"$2}' > "$WORK/mono.tsv"
 
 # 4a. segmented bed + species
-awk -F'\t' 'FNR==NR{sp[$1]=$2;next}{print $4"\t"$1"\t"$2"\t"$3"\t"(($1 in sp)?sp[$1]:"NA")}' \
-  "$WORK/scf2sp.tsv" "$OUT/MASTER.loci.segmented.bed" > "$WORK/tmp1.tsv"
+awk -F'\t' '{print $4"\t"$1"\t"$2"\t"$3"\t"$5}' "$OUT/MASTER.loci.segmented.bed" > "$WORK/tmp1.tsv"
 
 # 4b. + family  (use subt[] - 'sub' is a reserved awk function)
 awk -F'\t' 'FNR==NR{subt[$1]=$2;next}{print $0"\t"(($1 in subt)?subt[$1]:"NA")}' \
