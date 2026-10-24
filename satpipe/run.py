@@ -362,8 +362,16 @@ def st_trf(ctx: Ctx):
                 f.write(name + '.fa\n')
         suffix = '.' + params.replace(' ', '.') + '.dat'
         jobs = int(ctx.cfg.data['expansion']['jobs'])
-        ctx.sh(['bash', '-c', 'cat jobs.txt | %s --jobs %d "%s {} %s -h > /dev/null 2>&1 || true"'
+        # a TRF killed or crashed (exit >= 125: OOM, segfault) leaves a partial .dat that the presence check below
+        # would accept, so it is recorded in <scaffold>.fa.failed and fails the stage (it was masked by || true and
+        # 2>&1 > /dev/null; lower codes are tolerated: some TRF builds exit non-zero after a normal run)
+        ctx.sh(['bash', '-c', 'cat jobs.txt | %s --jobs %d "%s {} %s -h > /dev/null 2> {}.err; rc=\\$?; '
+                'if [ \\$rc -ge 125 ]; then echo \\$rc > {}.failed; fi; exit 0"'
                 % (ctx.tool('parallel'), jobs, ctx.tool('trf'), params)], '02_trf', cwd=split, log_name='02_trf_' + code)
+        failed = sorted(f[:-len('.fa.failed')] for f in os.listdir(split) if f.endswith('.fa.failed'))
+        if failed:
+            raise StageError('02_trf %s: TRF crashed on %d scaffolds (exit >= 125), e.g. %s; see %s/<scaffold>.fa.err'
+                             % (code, len(failed), failed[:5], split))
         with open(dat, 'w') as out:
             missing = []
             for name in names:
@@ -387,7 +395,9 @@ def st_trf(ctx: Ctx):
 
 def _plan_trf(ctx: Ctx):
     given = (ctx.cfg.data.get('inputs') or {}).get('trf_dat') or {}
-    ins = list(given.values()) + [g + '.fai' for g in ctx.cfg.genomes.values()]
+    # the genome FASTA itself (size + mtime), not only its .fai: a re-assembly with the same contigs and lengths
+    # gives an identical .fai and was skipped as up to date (GLM audit #29)
+    ins = list(given.values()) + [g + '.fai' for g in ctx.cfg.genomes.values()] + list(ctx.cfg.genomes.values())
     return ins, {'trf': ctx.cfg.data['discovery']['trf'], 'large': _large_threshold(ctx), 'genomes': ctx.cfg.genomes}
 
 

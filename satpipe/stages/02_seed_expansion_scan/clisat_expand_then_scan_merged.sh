@@ -231,6 +231,20 @@ for sp in "${!GENOME_OF[@]}"; do
   printf "%s\t%s\n" "$sp" "${GENOME_OF[$sp]}"
 done > "$GENOME_MAP"
 
+# ss_retry <out> <ssearch36 args...>: ssearch36 under parallel load on a shared file system fails now and then
+# ("cannot open library" with a garbled name). Those failures used to be hidden (2>/dev/null) and scored as no
+# signal; now a call is retried 3 times and only then fails the job (seen 2026-10-24 on Monsoon).
+ss_retry(){
+  local out="$1"; shift; local k
+  for k in 1 2 3; do
+    if ssearch36 "$@" > "$out" 2> "$out.err"; then rm -f "$out.err"; return 0; fi
+    sleep "$k"
+  done
+  echo "FATAL: ssearch36 $* failed 3 times: $(tail -2 "$out.err" | tr '\n' ' ')" >&2
+  return 1
+}
+export -f ss_retry
+
 # ── scan-only: skip PASS1+2 entirely ────────────────────────────────────────
 if [[ "$SCAN_ONLY" == "1" ]]; then
   log "SCAN_ONLY mode: skipping PASS1+2, using input BED directly as merged regions"
@@ -292,13 +306,14 @@ expand_locus(){
   _qwin(){
     local s1=$1 e1=$2
     local wfa="${WDIR}/qwin.fa"
-    samtools faidx "$genome" "${chrom}:${s1}-${e1}" 2>/dev/null \
-      | awk 'BEGIN{ORS=""} /^>/{print ">w\n";next} \
-             {gsub(/[ \t\r\n]/,"",$0);print $0} END{print "\n"}' \
-      > "$wfa" || { echo "-1"; return; }
-    grep -q '^>' "$wfa" || { echo "-1"; return; }
-    ssearch36 -n -m 8C -E 1000000 "$wfa" "$CONS_X" 2>/dev/null \
-      | awk 'BEGIN{m=-1} /^[^#]/{b=$12+0; if(b>m)m=b} END{print m+0}'
+    # a failed fetch or search is an error (return 1), not "no signal"
+    samtools faidx "$genome" "${chrom}:${s1}-${e1}" > "${WDIR}/qwin.raw" \
+      || { echo "FATAL: samtools faidx $genome ${chrom}:${s1}-${e1} failed" >&2; return 1; }
+    awk 'BEGIN{ORS=""} /^>/{print ">w\n";next} \
+             {gsub(/[ \t\r\n]/,"",$0);print $0} END{print "\n"}' "${WDIR}/qwin.raw" > "$wfa"
+    grep -q '^>' "$wfa" || { echo "FATAL: no sequence for ${chrom}:${s1}-${e1} in $genome" >&2; return 1; }
+    ss_retry "${WDIR}/qwin.m8c" -n -m 8C -E 1000000 "$wfa" "$CONS_X" || return 1
+    awk 'BEGIN{m=-1} /^[^#]/{b=$12+0; if(b>m)m=b} END{print m+0}' "${WDIR}/qwin.m8c"
   }
 
   for end in L R; do
@@ -353,14 +368,16 @@ expand_locus(){
       printf "%s:%d-%d\n" "$chrom" "${WIN_S1[$j]}" "${WIN_E1[$j]}" >> "$regions_file"
     done
     if [[ "$n_wins" -gt 0 ]]; then
-      samtools faidx "$genome" --region-file "$regions_file" 2>/dev/null \
-        | awk '/^>/{idx++; print ">"idx; next}{print}' > "$batch_fa" || true
+      # a failed batch fetch is an error: it used to give an empty batch and 'signal_lost' at 0 bp (GLM audit #20)
+      samtools faidx "$genome" --region-file "$regions_file" > "${WDIR}/batch_${end}.raw" \
+        || { echo "FATAL: samtools faidx $genome --region-file failed for $name" >&2; rm -rf "$WDIR"; return 1; }
+      awk '/^>/{idx++; print ">"idx; next}{print}' "${WDIR}/batch_${end}.raw" > "$batch_fa"
     else
       : > "$batch_fa"
     fi
     local search_out="${WDIR}/search_${end}.m8c"
     if [[ -s "$batch_fa" ]]; then
-      ssearch36 -n -m 8C -E 1000000 "$batch_fa" "$CONS_X" 2>/dev/null > "$search_out" || true
+      ss_retry "$search_out" -n -m 8C -E 1000000 "$batch_fa" "$CONS_X" || { rm -rf "$WDIR"; return 1; }
     else
       : > "$search_out"
     fi
@@ -449,7 +466,7 @@ expand_locus(){
             (( pw_e1 > L_scaf_len )) && pw_e1=$L_scaf_len
           fi
 
-          local pb; pb=$(_qwin "$pw_s1" "$pw_e1")
+          local pb; pb=$(_qwin "$pw_s1" "$pw_e1") || { rm -rf "$WDIR"; return 1; }
           if [[ "$pb" != "-1" ]] && (( ${pb%%.*} >= MIN_BITS_INT )); then
             probe_pos=$next_pos   # signal present: advance
           else
@@ -481,7 +498,7 @@ expand_locus(){
               fi
             fi
 
-            local pb2; pb2=$(_qwin "$pp_s1" "$pp_e1")
+            local pb2; pb2=$(_qwin "$pp_s1" "$pp_e1") || { rm -rf "$WDIR"; return 1; }
             if [[ "$pb2" != "-1" ]] && (( ${pb2%%.*} >= MIN_BITS_INT )); then
               pp_last_pass=$(( isLeft==1 ? pp_s1 : pp_e1 ))
             else
@@ -607,8 +624,7 @@ scan_region(){
            {gsub(/[ \t\r\n]/,"",$0); print $0} END{print "\n"}' "${WDIR}/raw.fa" > "$winfa"
     grep -q '^>' "$winfa" || { echo "FATAL scan_region: no sequence for ${chrom}:${s1}-${e1} in $genome" >&2; rm -rf "$WDIR"; return 1; }
     local bits
-    ssearch36 -n -m 8C "$winfa" "$CONS" > "${WDIR}/ss.out" 2> "${WDIR}/ss.err" \
-      || { echo "FATAL scan_region: ssearch36 failed on ${chrom}:${s1}-${e1}: $(tail -2 "${WDIR}/ss.err")" >&2; rm -rf "$WDIR"; return 1; }
+    ss_retry "${WDIR}/ss.out" -n -m 8C "$winfa" "$CONS" || { rm -rf "$WDIR"; return 1; }
     bits=$(awk 'BEGIN{m=0} /^[^#]/{if(($12+0)>m) m=$12+0} END{print m+0}' "${WDIR}/ss.out")
     if (( ${bits%%.*} >= SCAN_MIN_BITS_INT )); then
       printf "%s\t%d\t%s\t%s\t%s\n" "$chrom" "$pos" "$bits" "$tag" "$sp"
