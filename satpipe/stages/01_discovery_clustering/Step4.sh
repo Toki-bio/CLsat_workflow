@@ -78,6 +78,10 @@ BEGIN {
   if (mode=="clean") print >> cleanfa
 }
 ' "$fa"
+# both outputs always exist: a genome whose motifs are all internal repeats has an EMPTY clean set, it must not
+# vanish from the later stages without a word (GLM audit 2026-10-24)
+touch "${fa}.repeats.fas" "${fa}.clean.fas"
+[ -s "${fa}.clean.fas" ] || echo "WARNING: ${fa}: no motif passed the internal-repeat filter (clean set is empty)" >&2
 
 echo "Created:"
 echo "  ${fa}.clean.fas  (coverage <= ${COV_MAX})"

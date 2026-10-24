@@ -833,7 +833,16 @@ def st_catalogue(ctx: Ctx):
             for i, p in enumerate(rows):
                 lid = 'L%d' % (n_master + i + 1)
                 name = p[3] if len(p) >= 4 else 'MANUAL'
-                fam = p[6] if len(p) >= 7 and p[6] in ctx.cfg.families else max(maxbits[i], key=maxbits[i].get, default=ctx.families[0])
+                # family: col 7 when given (must be a configured family), else the best-scoring family; a locus that
+                # no family scores, or an unknown family name, is an error (both fell back silently, GLM audit #43)
+                if len(p) >= 7 and p[6]:
+                    if p[6] not in ctx.cfg.families:
+                        raise StageError('15_catalogue: manual locus %s has family %r, not a configured family' % (p[:4], p[6]))
+                    fam = p[6]
+                elif any(v > 0 for v in maxbits[i].values()):
+                    fam = max(sorted(maxbits[i]), key=maxbits[i].get)
+                else:
+                    raise StageError('15_catalogue: manual locus %s scores 0 against every family; give its family in col 7' % (p[:4],))
                 bits = maxbits[i]
                 others = sorted(((b, f) for f, b in bits.items() if f != fam), reverse=True)
                 best_other, best_bits = (others[0][1], others[0][0]) if others else ('', 0.0)
