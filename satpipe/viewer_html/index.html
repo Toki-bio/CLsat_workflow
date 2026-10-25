@@ -831,8 +831,12 @@ function splitArraysAtTransitions(arrays) {
     for (let si = 0; si < subArrays.length; si++) {
       const sa = subArrays[si];
       const isBoundary = (si === 0 || si === subArrays.length - 1);
-      if (sa.hits.length >= (isBoundary ? 1 : 2)) {
+      if (sa.hits.length >= (isBoundary ? 1 : 2) || !result.length) {
         result.push(sa);
+      } else {
+        // a single-monomer interior stretch is a type flip, not an array of its own: keep the monomer with the
+        // preceding stretch (each hit keeps its own clsat label) instead of dropping it (GLM audit #129)
+        result[result.length - 1].hits.push(...sa.hits);
       }
     }
   }
@@ -1858,13 +1862,9 @@ function renderMonomerMSA(containerId, result, rawSeq, genomicStart, scaffoldNam
           partProj[bAln.qEnd + k] = postBases[k];
         }
       }
-      // Put any remaining postBases back into first row's monOverLeft
+      // bases between the partial and the first monomer go to the partial row's right overhang, which the display and
+      // the copied FASTA include (they were put in firstRow.monOverLeft, cleared below and never written) (#131)
       const postRemain = postBases.substring(postUsed);
-      if (postRemain.length > 0) {
-        firstRow.monOverLeft = postRemain;
-      } else {
-        firstRow.monOverLeft = '';
-      }
       let trueFlank = boundarySeq.substring(0, bAln.sStart);
       // Fill leading consensus gaps with pre-alignment bases
       let preUsed = 0;
@@ -1874,12 +1874,12 @@ function renderMonomerMSA(containerId, result, rawSeq, genomicStart, scaffoldNam
         trueFlank = trueFlank.substring(0, trueFlank.length - preUsed);
       }
       projRows.unshift({
-        name: '#0 partial(' + firstRow.clsat[firstRow.clsat.length-1] + ')',
+        name: '#L' + (_iter + 1) + ' partial(' + firstRow.clsat[firstRow.clsat.length-1] + ')',   // unique per left partial (#132)
         hoverTitle: 'Partial repeat at boundary',
         monId: firstRow.monId + '-partial-' + _iter,
         bases: partProj, identity: bAln.identity,
         flankLeftStr: trueFlank, monOverLeft: '',
-        monOverRight: '', flankRightStr: '',
+        monOverRight: postRemain, flankRightStr: '',
         isFirst: true, isLast: false,
         clsat: firstRow.clsat,
         spacerLen: 0, spacerSeq: '',
@@ -2185,7 +2185,9 @@ function renderStrandTrack() {
   const gStrand = gMainDetail.append('g').attr('class', 'strandTrack');
 
   const plusColor = '#34d399', minusColor = '#f472b6';
-  const locusStart = currentLocus.start;
+  // offsets count from the start of the analysed window (as in drawMonomerMap and the copied table), which is
+  // usually not the locus start: anchoring to currentLocus.start drew the overlay away from its bars (GLM audit #54)
+  const locusStart = (result.genomicStart != null) ? result.genomicStart : currentLocus.start;
 
   result.arrays.forEach(arr => {
     arr.hits.forEach(m => {
@@ -3614,6 +3616,7 @@ function bindUIOnce(){
     resultBox.classList.add("show");
     statusEl.textContent = "Fetching from NCBI...";
     seqEl.textContent = "";
+    seqEl.dataset.region = "";   // which region the box holds; Analyze Monomers may reuse it only for that region
     copyBtn.style.display = "none";
     
     try {
@@ -3621,6 +3624,7 @@ function bindUIOnce(){
       console.log("[FASTA] ✓ Success! Received", fasta.length, "characters");
       statusEl.textContent = `${scf}:${start}-${end} (${end - start + 1} bp)`;
       seqEl.textContent = fasta;
+      seqEl.dataset.region = `${currentLocus.sp}|${scf}:${start}-${end}`;
       copyBtn.style.display = "inline-block";
       setStatus(`FASTA sequence fetched from NCBI:\n${scf}:${start}-${end}\n${fasta.length} characters`);
       
@@ -3665,6 +3669,7 @@ function bindUIOnce(){
     let [start, end] = xScaleDetail.domain().map(Math.round);
     const scf = currentLocus.scf;
     const length = end - start + 1;
+    const viewRegion = `${currentLocus.sp}|${scf}:${start}-${end}`;   // the region the user is looking at
 
     // Get consensus from assignment
     const assignment = assignments[currentLocus.id];
@@ -3673,7 +3678,7 @@ function bindUIOnce(){
     console.log("[MONOMER] === CLIENT-SIDE SW ANALYSIS START ===");
     console.log("[MONOMER] Locus:", currentLocus.id);
     console.log("[MONOMER] Length:", length, "bp");
-    console.log("[MONOMER] Consensus:", consensusName);
+    console.log("[MONOMER] Scanning every family consensus (assigned family:", consensusName + ")");   // #53
 
     // Show loading
     btn.disabled = true;
@@ -3699,15 +3704,18 @@ function bindUIOnce(){
       } catch (e) {
         console.warn("[MONOMER] NCBI fetch failed:", e.message);
         // Check if FASTA was already fetched and is displayed
-        const existingFasta = document.getElementById("fastaSeq")?.textContent;
-        if (existingFasta && existingFasta.startsWith(">")) {
+        // the FASTA box is reused only when it holds exactly the viewed region: any other region (an earlier
+        // view, a different zoom) shifted every reported monomer coordinate (GLM audit #22, #100)
+        const box = document.getElementById("fastaSeq");
+        const existingFasta = box?.textContent;
+        if (existingFasta && existingFasta.startsWith(">") && box.dataset.region === viewRegion) {
           sequence = existingFasta;
           // Unpadded fallback: undo the pad so genomic-offset math below stays
           // correct (this sequence starts at the original, unpadded position).
           start = start + TRIM_FLANK_PAD; end = end - TRIM_FLANK_PAD;
           console.log("[MONOMER] Using previously fetched FASTA (unpadded):", sequence.length, "chars");
         } else {
-          throw new Error("Cannot fetch sequence from NCBI. Click 'Get FASTA' first, then try again.");
+          throw new Error("Cannot fetch sequence from NCBI. Click 'Get FASTA' for this exact view first, then try again.");
         }
       }
 
@@ -3792,12 +3800,13 @@ function bindUIOnce(){
 
       // Store result on locus for strand track overlay on detail chart
       if (currentLocus) {
+        result.genomicStart = start;   // offsets in result are relative to the analysed window, not the locus
         currentLocus._monomerResult = result;
         renderStrandTrack();
       }
 
       // Generate a simple text summary for copy
-      const summaryLines = ['# Monomer analysis: ' + consensusName + ' in ' + scf + ':' + start + '-' + end];
+      const summaryLines = ['# Monomer analysis (all family consensuses; assigned ' + consensusName + ') in ' + scf + ':' + start + '-' + end];
       summaryLines.push('# ' + result.message);
       summaryLines.push('# Average identity: ' + avgPct + '%');
       summaryLines.push('# scaffold\tstart\tend\tlength\tidentity\tstrand\tarray\tclsat');
