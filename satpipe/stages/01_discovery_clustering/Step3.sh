@@ -31,7 +31,7 @@ while IFS= read -r -d '' dat_file; do
   # Resolve symlink target for processing
   if [[ -L "$dat_file" ]]; then
     # Get absolute path of target
-    target=$(readlink -f -- "$dat_file" 2>/dev/null)
+    target=$(readlink -f -- "$dat_file") || { echo "FATAL: cannot resolve symlink $dat_file" >&2; exit 1; }
     if [[ ! -f "$target" || ! -r "$target" ]]; then
       # a genome without readable TRF output must stop the run, not drop out of it silently
       echo "FATAL: Symlink $dat_file points to inaccessible or non-existent file: $target" >&2

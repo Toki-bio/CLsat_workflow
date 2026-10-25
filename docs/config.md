@@ -66,7 +66,7 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `anchor.independent` | bool |  | `False` | Families are unrelated (no common frame exists, e.g. different satellites of one genome): each family consensus is its own frame and only sub-subfamilies are rotated, onto their family. Default false: all families must be placeable on the anchor. |
 | `anchor.max_motif_mismatch` | int |  | `1` | Mismatches tolerated between the motif and the start of a rotated sequence (diverged families, e.g. CLsat4, may differ by one base). |
 | `anchor.min_identity` | float |  | `0.6` | Minimum identity of the local alignment to the anchor for a sequence to be placed; below it the stage fails instead of guessing a frame. |
-| `manual_loci` | path |  |  | Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are tagged MANUAL in provenance and listed in the manifest. |
+| `manual_loci` | path |  |  | Optional BED of hand-added loci (L541 in the Darevskia catalogue): chrom start end `<genome>|...` [score strand family]; col 4 must start with a genome code, col 7 (optional) names the family, else the best-scoring family is used. Entries are tagged MANUAL in provenance and listed in the manifest. |
 | `tools` | map -> path |  |  | Optional executable overrides: tool name -> path. The special key `bin_dir` is a directory searched before PATH for every tool. |
 | `viewer.title` | str |  |  | Page title. |
 | `viewer.species_names` | map -> str |  |  | Code -> display name. Keys must exist in `genomes`. |

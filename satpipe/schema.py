@@ -187,8 +187,10 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                               "below it the stage fails instead of guessing a frame."),
     }),
     "manual_loci": F("path",
-                     doc="Optional BED of hand-added loci (L541 in the Darevskia catalogue). Entries are "
-                         "tagged MANUAL in provenance and listed in the manifest."),
+                     doc="Optional BED of hand-added loci (L541 in the Darevskia catalogue): chrom start end "
+                         "`<genome>|...` [score strand family]; col 4 must start with a genome code, col 7 (optional) "
+                         "names the family, else the best-scoring family is used. Entries are tagged MANUAL in "
+                         "provenance and listed in the manifest."),
     "tools": F("map", key_pattern=TOOL_PATTERN, value=F("path"),
                doc="Optional executable overrides: tool name -> path. The special key `bin_dir` is a "
                    "directory searched before PATH for every tool."),

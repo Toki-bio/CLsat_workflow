@@ -4222,7 +4222,7 @@ function renderOrthoPairwiseOne(focalLabel, focalSide, focalRec, orthoLabel, ort
 }
 
 function renderOrthoPairwiseBoth(lid, fd, ol, od){
-  let html = `<div style="color:#64748b; font-size:9px; margin-bottom:4px;">Full pairwise alignment (own coordinates, up to 500 bp per side) &mdash; unlike the table above, insertions/deletions are shown as real gap columns rather than truncated to the display window.</div>`;
+  let html = `<div style="color:#64748b; font-size:9px; margin-bottom:4px;">Full pairwise alignment (own coordinates, the whole extracted flank on each side) &mdash; unlike the table above, insertions/deletions are shown as real gap columns rather than truncated to the display window.</div>`;
   html += renderOrthoPairwiseOne(lid, 'Left flank (LF)', fd.LF, ol, od.LF);
   html += renderOrthoPairwiseOne(lid, 'Right flank (RF)', fd.RF, ol, od.RF);
   return html;
