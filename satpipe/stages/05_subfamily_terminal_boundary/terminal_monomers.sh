@@ -70,9 +70,15 @@ done
 while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
   genome="${G[$sp]:-}"
   consx="${CONS2[$subt]:-}"
-  [ -z "$genome" ] || [ -z "$consx" ] && { continue; }
+  # an unknown genome or contig is a catalogue error; a locus whose family has no consensus gets NA rows for both
+  # ends instead of vanishing (GLM audit 2026-10-24)
+  [ -n "$genome" ] || { echo "FATAL: genome $sp of $lid not in $GENOMES" >&2; exit 1; }
+  if [ -z "$consx" ]; then
+    for END in 5p 3p; do printf '%s\t%s\t%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$subt" "$mono" "$END" >> "$OUT"; done
+    continue
+  fi
   scaflen=$(get_scaflen "$genome" "$scf")
-  [ -z "$scaflen" ] && continue
+  [ -n "$scaflen" ] || { echo "FATAL: contig $scf of $lid not in $genome" >&2; exit 1; }
   span=$(awk -v m="$mono" -v w="$WINDOW_MONO" 'BEGIN{print int(m*w)}')   # WINDOW_MONO monomers
 
   for END in 5p 3p; do
@@ -84,12 +90,18 @@ while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
     (( r_s < 1 )) && r_s=1
     (( r_e > scaflen )) && r_e=$scaflen
     (( r_s > r_e )) && continue
-    samtools faidx "$genome" "${scf}:${r_s}-${r_e}" 2>/dev/null | awk 'NR>1{printf "%s",$0}END{print ""}' > $tmpq.seq
+    # a failed fetch is an error; a window shorter than 20 bp gets an NA row instead of vanishing (GLM audit #85, #151)
+    samtools faidx "$genome" "${scf}:${r_s}-${r_e}" > $tmpq.raw || { echo "FATAL: samtools faidx $genome ${scf}:${r_s}-${r_e} failed ($lid)" >&2; exit 1; }
+    awk 'NR>1{printf "%s",$0}END{print ""}' $tmpq.raw > $tmpq.seq
     qlen=$(tr -d '\n' < $tmpq.seq | wc -c)
-    [ "$qlen" -lt 20 ] && continue
+    if [ "$qlen" -lt 20 ]; then
+      printf '%s\t%s\t%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$subt" "$mono" "$END" >> "$OUT"
+      continue
+    fi
     printf '>q\n%s\n' "$(cat $tmpq.seq)" > $tmpq.fa
-    # best alignment of the window against the doubled consensus, either strand
-    res=$(ssearch36 -n -z 3 -m 8C -E 100 $tmpq.fa $consx 2>/dev/null | grep -v '^#' | sort -k12,12gr | head -1)
+    # best alignment of the window against the doubled consensus, either strand (awk, not grep -v: no hit is a
+    # normal answer and must not trip pipefail)
+    res=$(ssearch36 -n -z 3 -m 8C -E 100 $tmpq.fa $consx | awk '!/^#/' | sort -k12,12gr | awk 'NR==1')
     if [ -z "$res" ]; then
       printf '%s\t%s\t%s\t%s\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n' "$lid" "$subt" "$mono" "$END" >> "$OUT"
       continue
@@ -114,7 +126,7 @@ while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
     }' >> "$OUT"
   done
 done < "$MASTER"
-rm -f $tmpq $tmpq.fa $tmpq.seq "${CONS2[@]}"
+rm -f $tmpq $tmpq.fa $tmpq.seq $tmpq.raw "${CONS2[@]}"
 
 echo "rows: $(( $(wc -l < "$OUT") - 1 ))"
 echo "=== sample ==="

@@ -112,8 +112,12 @@ def scan_runs(genome, scaf, s, e, consensus_files, win=150, min_aln=80, min_id=8
     import tempfile
     if not (shutil.which('samtools') and shutil.which('ssearch36')):
         return None
-    out = subprocess.run(['samtools', 'faidx', genome, '%s:%d-%d' % (scaf, s, e)], capture_output=True, text=True).stdout
-    seq = ''.join(out.split('\n')[1:]).upper()
+    # a failed fetch or search is an error: it used to look like "no run found" and silently fall back to the
+    # start/end seeds (GLM audit #81, #32)
+    r = subprocess.run(['samtools', 'faidx', genome, '%s:%d-%d' % (scaf, s, e)], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit('Step3b: samtools faidx %s %s:%d-%d failed: %s' % (genome, scaf, s, e, r.stderr.strip()[-300:]))
+    seq = ''.join(r.stdout.split('\n')[1:]).upper()
     if not seq:
         return None
     d = tempfile.mkdtemp()
@@ -125,8 +129,11 @@ def scan_runs(genome, scaf, s, e, consensus_files, win=150, min_aln=80, min_id=8
         for p in consensus_files:
             c = ''.join(l.strip() for l in open(p) if not l.startswith('>')).upper()
             f.write('>%s\n%s\n' % (os.path.basename(p).split('.')[0], c + c))
-    res = subprocess.run(['ssearch36', '-n', '-z', '3', '-m', '8', '-E', '1000', '-b', '1', '-d', '1', qf, lf],
-                         capture_output=True, text=True).stdout
+    rr = subprocess.run(['ssearch36', '-n', '-z', '3', '-m', '8', '-E', '1000', '-b', '1', '-d', '1', qf, lf],
+                        capture_output=True, text=True)
+    if rr.returncode:
+        sys.exit('Step3b: ssearch36 failed on %s:%d-%d: %s' % (scaf, s, e, rr.stderr.strip()[-300:]))
+    res = rr.stdout
     hit = set()
     for line in res.splitlines():
         p = line.split('\t')

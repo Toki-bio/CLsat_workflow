@@ -129,7 +129,12 @@ def build_lists(master, assign, flanks, orthologs, subfam, threshold='80'):
         if nuf >= 1 or mine:
             by_sp = {}
             for p in mine:
-                by_sp.setdefault(sp_of.get(p, '?'), set()).add(p)
+                # a partner outside the catalogue means the orthology and catalogue files do not belong together;
+                # filing it under '?' flipped the same/different-genome verdict (GLM audit #108)
+                if p not in sp_of:
+                    raise ValueError('ortholog partner %s of %s is not in the catalogue (flank_orthologs.json and '
+                                     'MASTER.merged.bed are from different runs?)' % (p, lid))
+                by_sp.setdefault(sp_of[p], set()).add(p)
             ortho.append({'id': lid, 'sp': sp, 'fam': fam, 'nuf': nuf, 'n': len(mine),
                           'partners': {k: sorted(v) for k, v in sorted(by_sp.items())}})
     # uncatalogued candidates first, then catalogue loci in catalogue order

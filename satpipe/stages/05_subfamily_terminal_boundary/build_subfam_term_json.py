@@ -76,8 +76,14 @@ print(f"terminal_monomers.json: {len(term)} loci, {os.path.getsize(W+'/terminal_
 
 # --- aggregate: covered-length histogram per family per end, for the viewer chart ---
 agg = {}
+# family of every locus from locus_master.tsv (col 6), which always has it; the sub-subfamily table may lack a
+# locus, which then fell into family '?' and out of the histogram (GLM audit #95)
+fam_of = {}
+for line in open(f"{W}/locus_master.tsv"):
+    p = line.rstrip("\n").split("\t")
+    if len(p) >= 6: fam_of[p[0]] = p[5]
 for lid, ends in term.items():
-    subt = subfam.get(lid,{}).get("major","?")
+    subt = fam_of.get(lid) or subfam.get(lid,{}).get("major","?")
     for which in ("start","end"):
         r = ends.get(which)
         if not r or r["covered"] is None: continue

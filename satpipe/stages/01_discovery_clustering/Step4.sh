@@ -25,9 +25,12 @@ command -v gawk >/dev/null 2>&1 || { echo "Error: gawk is required (PROCINFO sor
 
 # Run TRF. TRF's exit status is not 0 on success in every build (some return the number of
 # sequences processed), so do not let `set -e` abort here; the .dat check below is the real test.
-# shellcheck disable=SC2086
-trf "$fa" $TRF_PARAMS -h || true
 dat="${fa}.${TRF_PARAMS// /.}.dat"
+rm -f "$dat"   # a .dat left by an earlier run would pass the existence check below (GLM audit #51)
+# shellcheck disable=SC2086
+rc=0; trf "$fa" $TRF_PARAMS -h || rc=$?
+# exit >= 125 = killed / crashed: the .dat is partial (lower non-zero codes are normal for some TRF builds)
+[[ "$rc" -lt 125 ]] || { echo "Error: TRF crashed on $fa (exit $rc)" >&2; exit 1; }
 [[ -f "$dat" ]] || { echo "Error: dat file not found: $dat"; exit 1; }
 
 # Parse TRF .dat -> seq coverage (merge overlaps correctly)

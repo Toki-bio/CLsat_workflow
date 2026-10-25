@@ -19,6 +19,16 @@ command -v vsearch >/dev/null 2>&1 || { echo "Error: vsearch not found in PATH" 
 [[ -s "$REF" ]] || { echo "Error: reference FASTA missing/empty: $REF" >&2; exit 1; }
 mkdir -p "$OUT/cross_clusters"
 rm -f "$OUT"/cross_clusters/clust_*
+# every per-genome cluster of 2+ loci must have its rotated alignment (Step 7); a missing one would drop its loci
+# from the pool without a word (GLM audit #48)
+miss=0
+for f in "$CB"/*/*_cluster_*.fa; do
+  [ -e "$f" ] || continue
+  [ "$(grep -c '^>' "$f")" -gt 1 ] || continue
+  b=$(basename "$f" .fa); r="$(dirname "$f")/${b}_rotated/${b}.rotated.fa"
+  [ -s "$r" ] || { echo "Error: no rotated alignment for $f (expected $r)" >&2; miss=$((miss+1)); }
+done
+[ "$miss" -eq 0 ] || { echo "Error: $miss clusters without a rotated alignment; rerun stage 07" >&2; exit 1; }
 cat "$CB"/*/*_rotated/*.rotated.fa > "$OUT/all7_pooled.rot.fa"
 cat "$REF" "$OUT/all7_pooled.rot.fa" > "$OUT/all7_pooled.rot.fas"
 awk '/^>/{print} !/^>/{gsub(/-/,""); if(length($0)>0) print}' "$OUT/all7_pooled.rot.fas" > "$OUT/all7_pooled.degap.fa"
