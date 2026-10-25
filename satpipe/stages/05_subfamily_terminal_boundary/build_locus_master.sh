@@ -3,7 +3,8 @@ set -euo pipefail
 # Build locus_master.tsv (Lid scf start0 end species family MONO) from the stage-12/14 outputs.
 #
 # Usage: build_locus_master.sh <MASTER.merged.bed> <arbitration_out_dir> <work_dir> <families.tsv>
-#   MASTER.merged.bed    stage-12 output (species code in the name column)
+#   MASTER.merged.bed    not read (kept for the calling convention); the genome comes from col 5 of
+#                        MASTER.loci.segmented.bed
 #   arbitration_out_dir  holds MASTER.final_assignment.tsv and MASTER.loci.segmented.bed (stage 14)
 #   work_dir             created; receives locus_master.tsv (+ helper tables)
 #   families.tsv         family  mono  [consensus.fa]

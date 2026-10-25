@@ -81,14 +81,21 @@ def read_fa(p):
 
 GEN = {p[0]: p[1] for p in read_tsv(a.genomes, 2)}
 MONO = {p[0]: int(p[1]) for p in read_tsv(a.families, 3)}
-FAMOF = {p[1]: p[0] for p in read_tsv(a.members, 2)}
+FAMOF = {}
+for p in read_tsv(a.members, 2):
+    if p[1] in FAMOF and FAMOF[p[1]] != p[0]:   # the same sub-subfamily name under two families: last one won (#97)
+        sys.exit('%s: sub-subfamily %s listed under %s and %s' % (a.members, p[1], FAMOF[p[1]], p[0]))
+    FAMOF[p[1]] = p[0]
 
 ss = {}
 if os.path.isdir(a.subcons):
     for fn in sorted(os.listdir(a.subcons)):
         if fn.endswith(('.fa', '.fas', '.fasta')):
             name = fn.rsplit('.', 1)[0]
-            seq = ''.join(read_fa(os.path.join(a.subcons, fn)).values())
+            recs = read_fa(os.path.join(a.subcons, fn))
+            if len(recs) != 1:   # one sub-subfamily per file; several records were concatenated and halved as one (#96)
+                sys.exit('%s: a sub-subfamily file must hold exactly one record, found %d' % (fn, len(recs)))
+            seq = next(iter(recs.values()))
             ss[name] = seq[:len(seq) // 2] if a.already_doubled else seq
 else:
     ss = read_fa(a.subcons)

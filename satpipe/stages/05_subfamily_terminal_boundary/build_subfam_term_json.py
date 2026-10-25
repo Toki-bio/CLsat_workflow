@@ -8,6 +8,7 @@ Usage: build_subfam_term_json.py <work_dir> <families.tsv>
 Environment: CONFIDENT_DELTA  bits margin over the second-best sub-subfamily for a confident call [10]
 """
 import collections
+import math
 import json
 import os
 import sys
@@ -106,6 +107,8 @@ with open(f"{W}/terminal_hist.json","w") as f:
 print(f"terminal_hist.json written")
 for subt in sorted(out):
     s = out[subt]["start"]; e = out[subt]["end"]
-    full_s = sum(s[int(out[subt]['mono']*0.9):])
-    part_s = sum(s[:int(out[subt]['mono']*0.9)])
+    # same rule as terminal_monomers.sh: partial when covered < 0.9 x mono, so full starts at ceil(0.9 x mono) (#123)
+    cut = math.ceil(out[subt]['mono'] * 0.9)
+    full_s = sum(s[cut:])
+    part_s = sum(s[:cut])
     print(f"  {subt}: 5' full={full_s} partial={part_s}")

@@ -37,6 +37,8 @@ NSPLIT="${NSPLIT:-4}"           # a timed-out piece is cut into this many overla
 JOBS="${JOBS:-16}"
 for t in samtools trf parallel python3 timeout; do command -v $t >/dev/null || { echo "$t not in PATH" >&2; exit 1; }; done
 [[ "$TRF_PARAMS" =~ ^[0-9]+(\ [0-9]+){6}$ ]] || { echo "TRF_PARAMS must be 7 integers" >&2; exit 1; }
+# overlap >= chunk would advance the chunker by one base per piece (GLM audit #135)
+[ "$OVERLAP" -lt "$CHUNK" ] || { echo "OVERLAP_BP ($OVERLAP) must be smaller than CHUNK_BP ($CHUNK)" >&2; exit 1; }
 
 mkdir -p "$V"
 cd "$V"

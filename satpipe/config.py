@@ -68,6 +68,15 @@ def _cross_checks(d: dict, errors: list, warnings: list) -> None:
     for code in ((d.get("viewer") or {}).get("species_names") or {}):
         if code not in codes:
             errors.append(f"viewer.species_names.{code}: not a code in `genomes`")
+    # names that must exist elsewhere in the config (GLM audit #125, #86: they passed and failed later)
+    af = (d.get("anchor") or {}).get("family")
+    if af and af not in fams:
+        errors.append(f"anchor.family: '{af}' is not a family in `families`")
+    from .tools import TOOLS
+    known = {t.name for t in TOOLS} | {"bin_dir"}
+    for k in (d.get("tools") or {}):
+        if k not in known:
+            errors.append(f"tools.{k}: not a known tool (known: {', '.join(sorted(known))})")
     per = (d.get("discovery") or {}).get("period")
     if isinstance(per, list) and len(per) == 2 and all(isinstance(x, int) for x in per) and per[0] > per[1]:
         errors.append(f"discovery.period: min {per[0]} > max {per[1]}")
@@ -75,7 +84,8 @@ def _cross_checks(d: dict, errors: list, warnings: list) -> None:
 
 def load_config(path: str) -> Config:
     """Parse YAML, validate against the schema, fill defaults, resolve paths.
-    Raises ConfigError with every problem found (not just the first)."""
+    Raises ConfigError with every schema problem found (not just the first); the checks that combine several keys
+    run only once the schema is valid, because they need well-typed values (GLM audit #128)."""
     path = os.path.abspath(path)
     base_dir = os.path.dirname(path)
     with open(path, encoding="utf-8") as fh:

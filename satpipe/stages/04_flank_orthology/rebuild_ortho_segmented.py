@@ -85,7 +85,7 @@ for sp, g in GEN.items():
     for line in open(g + '.fai'):
         p = line.split('\t')
         SL[(sp, p[0])] = int(p[1])
-TR = str.maketrans('ACGTN', 'TGCAN')
+TR = str.maketrans('ACGTNRYKMSWBDHV', 'TGCANYRMKSWVHDB')   # IUPAC-aware (GLM audit #134)
 rc = lambda s: s.translate(TR)[::-1]
 
 # ---- 1. load loci from the segmented catalogue, keep L-ids ----

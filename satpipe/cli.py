@@ -11,8 +11,6 @@ from .config import ConfigError, dump_config, load_config
 from .schema import to_markdown
 from .stages import STAGES
 
-NOT_YET = ("not implemented yet: the driver is work-plan step 5 (HANDOFF.md). "
-           "`satpipe check` and `satpipe config` work; `satpipe stages` lists the contracts.")
 
 
 def cmd_check(a: argparse.Namespace) -> int:
@@ -56,11 +54,6 @@ def cmd_stages(a: argparse.Namespace) -> int:
         if notes:
             print(f"{'':12} {'':5} {'':46} [{'; '.join(notes)}]")
     return 0
-
-
-def cmd_not_yet(a: argparse.Namespace) -> int:
-    print(f"satpipe {a.cmd}: {NOT_YET}", file=sys.stderr)
-    return 2
 
 
 def cmd_viewer(a: argparse.Namespace) -> int:

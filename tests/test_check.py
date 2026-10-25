@@ -1,3 +1,4 @@
+import pytest
 import os
 
 from satpipe import cli
@@ -114,3 +115,18 @@ def test_long_out_dir_fails(project, monkeypatch):
     d, cfg = project
     monkeypatch.setattr(satpipe.check, "MAX_BASE_PATH", 20)
     assert cli.main(["check", str(cfg), "--no-tools"]) == 1
+
+
+def test_unknown_anchor_family_and_tool_key_are_config_errors(project):
+    # both passed the check and failed only later (anchor) or were silently ignored (tools) (GLM audit #125, #86)
+    from satpipe.config import ConfigError, load_config
+    d, cfg = project
+    base = cfg.read_text()
+    cfg.write_text(base + "\nanchor: {family: NoSuchFamily}\n")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(cfg))
+    assert "anchor.family" in str(e.value)
+    cfg.write_text(base + "\ntools: {ssearch_36: /opt/x/ssearch36}\n")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(cfg))
+    assert "tools.ssearch_36" in str(e.value)

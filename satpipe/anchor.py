@@ -145,8 +145,8 @@ def rotate_to_anchor(seq: str, anchor: str, min_identity: float = 0.6, min_align
                 if dist <= max_snap and (best is None or (mm, dist) < best[:2]):
                     best = (mm, dist, p)
         if best is None:
-            raise AnchorError('the motif %s is not within %d bases of the alignment start (nearest: %s)'
-                              % (motif, max_snap, 'none'))
+            raise AnchorError('the motif %s is not within %d bases of the alignment start%s'
+                              % (motif, max_snap, ''))   # no 'nearest' is computed (the message used to claim one, #118)
         shift, snapped = best[2], best[1]
     return d[shift:shift + n], shift, ident, cols, snapped
 
@@ -198,6 +198,7 @@ def verify_records(recs: dict, anchor: str, motif: str = '', max_mm: int = 1, mi
 def fasta_files(path: str) -> list:
     """A FASTA file, or the FASTA files of a directory."""
     if os.path.isdir(path):
+        # *.anchored.fa are this module's own outputs: re-reading them re-anchored stale copies (GLM audit #98)
         return sorted(os.path.join(path, f) for f in os.listdir(path)
-                      if f.lower().endswith(('.fa', '.fas', '.fasta', '.fna')))
+                      if f.lower().endswith(('.fa', '.fas', '.fasta', '.fna')) and '.anchored.' not in f.lower())
     return [path]

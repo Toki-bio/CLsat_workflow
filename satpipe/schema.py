@@ -3,7 +3,9 @@
 The schema is a plain nested dict so that it can be rendered to docs/config.md and
 validated without any dependency beyond PyYAML. Every parameter that the stage scripts
 currently hard-code appears here with the published Darevskia value as its default, so a
-config that sets only the required keys reproduces the published behaviour.
+config that sets only the required keys reproduces the published behaviour, except where a later correction
+was made the default and is said so in its field doc (discovery.monomerize; ssearch36 now always runs with fixed
+statistics, -z 3, which the published run did not).
 """
 from __future__ import annotations
 

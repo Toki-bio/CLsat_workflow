@@ -119,7 +119,7 @@ def check_bed(path: str, label: str, codes: set, report: Report, section: str) -
     if not _exists(report, section, label, path):
         return
     n = 0
-    with open(path, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:   # a non-UTF-8 byte gives a FAIL row, not a crash (#147)
         for ln, line in enumerate(fh, 1):
             if not line.strip() or line.startswith(("#", "track", "browser")):
                 continue

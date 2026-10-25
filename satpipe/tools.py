@@ -37,7 +37,7 @@ TOOLS = [
     Tool("ssearch36", ("-h",), r"version[: ]+(\d+\.\d+\.\d+\w*)", True, "11, 13, orthology, subfamily, terminal",
          "FASTA package (fasta3 / fasta36)"),
     Tool("samtools", ("--version",), r"samtools (\d+\.\d+[\w.]*)", True, "11+", "", (1, 12)),
-    Tool("bedtools", ("--version",), r"bedtools v?(\d+\.\d+\.\d+)", True, "12, 14"),
+    Tool("bedtools", ("--version",), r"bedtools v?(\d+\.\d+\.\d+)", True, "11, 12, 13, 14, 15, 20"),
     Tool("parallel", ("--version",), r"GNU parallel (\d+)", True, "11, 13, finalisation", "GNU parallel"),
     Tool("cons", ("-version",), r"EMBOSS:(\d+\.\d+\.\d+[\w.]*)", False, "finalisation (consensus deliverable)", "EMBOSS"),
     Tool("water", ("-version",), r"EMBOSS:(\d+\.\d+\.\d+[\w.]*)", False, "finalisation", "EMBOSS"),
