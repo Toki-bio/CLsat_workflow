@@ -129,6 +129,11 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "short_segments": F("enum", default="drop", choices=["drop", "merge"],
                             doc="SEG_SHORT: `drop` is the published behaviour; `merge` folds short segments "
                                 "into the longer neighbour."),
+        "bin_share": F("float", default=0.75, min=0, max=1,
+                       doc="BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most "
+                           "1-kb bins (bins whose best window reaches expansion.min_bits); the call is _AMBIGUOUS when "
+                           "that family holds less than this share of the bins. Not in the published run, which used "
+                           "the locus-wide maximum window (author's decision 2026-10-25)."),
     }),
     "orthology": F("block", doc="Flank orthology (`rebuild_ortho_segmented.py`).", fields={
         "flank_bp": F("int", default=600, min=1, doc="FLANK: flank length extracted outward from each array edge."),

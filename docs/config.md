@@ -45,6 +45,7 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `arbitration.seg_min_run` | int |  | `10` | SEG_MIN_RUN: minimum run of bins to start a segment. |
 | `arbitration.seg_min_locus` | int |  | `2000` | SEG_MIN_LOCUS: segments shorter than this are handled per `short_segments`. |
 | `arbitration.short_segments` | one of `drop`, `merge` |  | `drop` | SEG_SHORT: `drop` is the published behaviour; `merge` folds short segments into the longer neighbour. |
+| `arbitration.bin_share` | float |  | `0.75` | BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most 1-kb bins (bins whose best window reaches expansion.min_bits); the call is _AMBIGUOUS when that family holds less than this share of the bins. Not in the published run, which used the locus-wide maximum window (author's decision 2026-10-25). |
 | `orthology.flank_bp` | int |  | `600` | FLANK: flank length extracted outward from each array edge. |
 | `orthology.guard_bp` | int |  | `0` | GUARD: extra distance a flank must keep from another locus. |
 | `orthology.min_aln` | int |  | `200` | Minimum aligned length for an ortholog hit. |

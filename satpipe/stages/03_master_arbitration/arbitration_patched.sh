@@ -201,6 +201,23 @@ for scf,start,end,lid in loci:
                 continue
             out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{num}\n"); total_seg+=1
 out.close(); short_out.close()
+# family that wins most 1-kb bins of every output locus (bins whose best window reaches BIN_MIN_BITS): the
+# arbitration rule for segments, conflicts and unseeded loci (D6). The locus-wide maximum window alone let one strong
+# window of another family decide a whole segment (author's decision 2026-10-25).
+from collections import Counter
+BIN_MIN=float(os.environ.get("BIN_MIN_BITS","50"))
+with open(out_file+".binfam.tsv","w") as bf:
+    for line in open(out_file):
+        scf,s,e,lid=line.rstrip("\n").split("\t")[:4]; s=int(s); e=int(e)
+        c=Counter()
+        for b in range(s//BIN,(e-1)//BIN+1):
+            fb=bins[scf].get(b)
+            if fb and max(fb.values())>=BIN_MIN: c[max(sorted(fb.keys()),key=fb.get)]+=1
+        if c:
+            maj,nm=sorted(c.items(),key=lambda kv:(-kv[1],kv[0]))[0]
+            bf.write(f"{lid}\t{maj}\t{nm}\t{sum(c.values())}\t"+",".join(f"{k}:{v}" for k,v in sorted(c.items()))+"\n")
+        else:
+            bf.write(f"{lid}\t.\t0\t0\t.\n")
 print(f"  Original: {len(loci)}, split: {n_split}, output: {total_seg}",file=sys.stderr)
 print(f"  Short segments (<{MIN_LOCUS} bp) {SEG_SHORT}: {n_short} pieces, {bp_short} bp -> {out_file}.short_segments.bed",file=sys.stderr)
 PYEOF
@@ -282,11 +299,24 @@ done
 ##############################################################################
 # D6 -- PATCHED: three explicit branches
 ##############################################################################
-log "D6: arbitration (three-branch)"
+log "D6: arbitration (three-branch; family of segments, conflicts and unseeded loci = 1-kb bin majority)"
+mv "$LOCI_BED.binfam.tsv" "$OUT/MASTER.locus_binfam.tsv"
+check_file "$OUT/MASTER.locus_binfam.tsv"
 
-gawk -v D="$DELTA" -v DA="$DELTA_AMBIG" -v FAMS="$FAMS_STR" 'BEGIN{FS=OFS="\t"; nf=split(FAMS,fam," ")}
+# MASTER.locus_binfam.tsv: locus  majority_family  n_bins_won  n_bins  per-family counts (bins whose best window
+# reaches BIN_MIN_BITS). Branches 1-2 take the majority family (the locus-wide maximum window decided before
+# 2026-10-25, so one strong window of another family could decide a whole segment); its maximum bits and the strongest
+# other family are still reported, delta = assigned - strongest other (may be negative). _AMBIGUOUS: the majority
+# holds less than BIN_SHARE (0.75) of the bins. Without scored bins the old maximum rule is used.
+gawk -v D="$DELTA" -v DA="$DELTA_AMBIG" -v FAMS="$FAMS_STR" -v SHARE="${BIN_SHARE:-0.75}" 'BEGIN{FS=OFS="\t"; nf=split(FAMS,fam," ")}
 
-FNR==NR{ if(FNR==1) next; seed[$1]=$2; next }
+ARGIND==1{ bmaj[$1]=$2; bwon[$1]=$3+0; btot[$1]=$4+0; next }
+ARGIND==2{ if(FNR==1) next; seed[$1]=$2; next }
+
+function strongest_other(f,    ki, n, c, ks){ ov=0; of=""; n=asorti(bits,ks); for(ki=1;ki<=n;ki++){ c=ks[ki]; if(c!=f && bits[c]>ov){ov=bits[c]; of=c} } }
+function maxwinner(    ki, n, c, bv, ks){ wf=""; wv=0; sf2=""; sv2=0; n=asorti(bits,ks)
+  for(ki=1;ki<=n;ki++){ c=ks[ki]; bv=bits[c]; if(bv>wv){sf2=wf;sv2=wv;wf=c;wv=bv} else if(bv>sv2){sf2=c;sv2=bv} } }
+function hasbins(l){ return (l in bmaj) && bmaj[l]!="." && btot[l]>0 }
 
 {
   l=$1
@@ -294,45 +324,31 @@ FNR==NR{ if(FNR==1) next; seed[$1]=$2; next }
   for(fi=1;fi<=nf;fi++) bits[fam[fi]]=$(fi+1)+0
   s=seed[l]
 
-  # Branch 1: SEED_CONFLICT or sub-locus
-  if(s=="SEED_CONFLICT" || index(l,".")>0){
-    wf=""; wv=0; sf2=""; sv2=0
-    n=asorti(bits,ks)
-    for(ki=1;ki<=n;ki++){
-      c=ks[ki]; bv=bits[c]
-      if(bv>wv){sf2=wf;sv2=wv;wf=c;wv=bv} else if(bv>sv2){sf2=c;sv2=bv}
+  # Branches 1 (SEED_CONFLICT or sub-locus) and 2 (NO_SEED): family = bin majority
+  if(s=="SEED_CONFLICT" || index(l,".")>0 || s==""){
+    base=(s=="")?"NO_SEED_RESOLVED":((index(l,".")>0)?"SEGMENT_RESOLVED":"SEED_CONFLICT_RESOLVED")
+    if(hasbins(l)){
+      f=bmaj[l]; strongest_other(f)
+      amb=(bwon[l] < SHARE*btot[l])
+      flag=(s=="")?(amb?"NO_SEED_AMBIGUOUS":"NO_SEED_RESOLVED"):(amb?base"_AMBIGUOUS":base)
+      print l,f,bits[f],of,ov,(bits[f]-ov),flag; next
     }
-    base=(index(l,".")>0)?"SEGMENT_RESOLVED":"SEED_CONFLICT_RESOLVED"
+    maxwinner()
     flag=(sv2>0 && (wv-sv2)<DA)?base"_AMBIGUOUS":base
+    if(s=="") flag=(sv2>0 && (wv-sv2)<DA)?"NO_SEED_AMBIGUOUS":"NO_SEED_RESOLVED"
     print l,wf,wv,sf2,sv2,(wv-sv2),flag; next
   }
 
-  # Branch 2: NO_SEED
-  if(s==""){
-    wf=""; wv=0; sf2=""; sv2=0
-    n=asorti(bits,ks)
-    for(ki=1;ki<=n;ki++){
-      c=ks[ki]; bv=bits[c]
-      if(bv>wv){sf2=wf;sv2=wv;wf=c;wv=bv} else if(bv>sv2){sf2=c;sv2=bv}
-    }
-    flag=(sv2>0 && (wv-sv2)<DA)?"NO_SEED_AMBIGUOUS":"NO_SEED_RESOLVED"
-    print l,wf,wv,sf2,sv2,(wv-sv2),flag; next
-  }
-
-  # Branch 3: UNIQUE_SEED
-  # delta = seed bits - strongest other family, the same sign convention as branches 1-2
-  # (assigned - runner-up). Before 2026-10-15 this branch wrote bestv-sb, so the column had
-  # mixed signs. Candidates are visited in sorted order so ties are deterministic.
-  sb=bits[s]; best=""; bestv=0
-  n=asorti(bits,ks)
-  for(ki=1;ki<=n;ki++){ c=ks[ki]; if(c!=s && bits[c]>bestv){best=c;bestv=bits[c]} }
+  # Branch 3: UNIQUE_SEED: the curated seed family is kept (the curated cluster -> family table decides it);
+  # the flag marks a contradiction by the bits (delta <= -DELTA) or by a clear bin majority of another family
+  sb=bits[s]; strongest_other(s); best=of; bestv=ov
   delta=sb-bestv
   flag="UNIQUE_SEED_ONLY"
   if(bestv>0) flag="UNIQUE_SEED_WITH_COMPETITOR"
-  if(delta<=-D) flag="UNIQUE_SEED_CONTRADICTION"   # the seed family is retained; the flag marks the disagreement
+  if(delta<=-D || (hasbins(l) && bmaj[l]!=s && bwon[l] >= SHARE*btot[l])) flag="UNIQUE_SEED_CONTRADICTION"
   print l,s,sb,best,bestv,delta,flag
 
-}' "$OUT/MASTER.locus_seeds.tsv" "$OUT/MASTER.locus_bits.tsv" \
+}' "$OUT/MASTER.locus_binfam.tsv" "$OUT/MASTER.locus_seeds.tsv" "$OUT/MASTER.locus_bits.tsv" \
 > "$OUT/MASTER.final_assignment.raw.tsv"
 check_file "$OUT/MASTER.final_assignment.raw.tsv"
 
