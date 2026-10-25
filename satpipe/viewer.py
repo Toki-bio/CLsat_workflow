@@ -119,6 +119,17 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                 a, b = e, min(L, e + flank_view)
                 if b > a:
                     f.write('%s\t%d\t%d\t%s|%s:%d-%d|FLANK\n' % (scf, a, b, sp, scf, a + 1, b))
+        # earlier flank scans are reused only for the same flank windows: a rebuilt catalogue changes flanks.bed, and
+        # stale scans would then lose the new loci's flanks (GLM audit #56)
+        import hashlib
+        sig = hashlib.sha256(open(bed, 'rb').read() + repr(sorted(cfg.families)).encode()).hexdigest()
+        sigf = os.path.join(fdir, 'flanks.bed.sha256')
+        if not os.path.isfile(sigf) or open(sigf).read().strip() != sig:
+            for fam in fams:
+                for f in os.listdir(fdir):
+                    if f.startswith('flank_' + fam + '.'):
+                        os.remove(os.path.join(fdir, f))
+            open(sigf, 'w').write(sig + '\n')
         tmp = os.path.join(out, 'MASTER_flank.bits.tsv')
         with open(tmp, 'w') as fo:
             fo.write('scaffold\tpos\tbits\tclsat\tspecies\n')   # species: the genome (prefix of the scan name)

@@ -250,6 +250,21 @@ def run_stage(fn, ctx: Ctx):
 
 # ----------------------------------------------------------------------------- tables
 
+def _genome_files(ctx):
+    """Genome FASTAs (fingerprinted by size + mtime): every stage that reads sequence from them lists them, so a
+    replaced assembly reruns it (GLM audit 2026-10-24: several plans missed them)."""
+    return list(ctx.cfg.genomes.values())
+
+
+def _cons_files(ctx):
+    return [fd['consensus'] for fd in ctx.cfg.families.values()]
+
+
+def _subx_inputs(ctx):
+    c = (ctx.cfg.data.get('subfamily') or {}).get('consensuses')
+    return [c] if c and os.path.exists(c) else []
+
+
 @stage('00_tables')
 def st_tables(ctx: Ctx):
     t = ctx.d('tables')
@@ -446,7 +461,7 @@ def st_large(ctx: Ctx):
 
 
 def _plan_large(ctx: Ctx):
-    return [os.path.join(ctx.run, 'trf', 'large_scaffolds.tsv'), os.path.join(ctx.run, 'tables', 'families.tsv')], \
+    return [os.path.join(ctx.run, 'trf', 'large_scaffolds.tsv'), os.path.join(ctx.run, 'tables', 'families.tsv')] + _cons_files(ctx) + _genome_files(ctx), \
         {'fin': ctx.cfg.data['finalisation'], 'trf': ctx.cfg.data['discovery']['trf'], 'min_copies': ctx.cfg.data['discovery']['min_copies']}
 
 
@@ -545,7 +560,10 @@ def st_mafft(ctx: Ctx):
     return []
 
 
-st_mafft.plan = lambda ctx: ([os.path.join(ctx.run, 'motifs', 'clean', c + '.fa.clean.fas.rot') for c in ctx.codes], {})
+st_mafft.plan = lambda ctx: ([os.path.join(ctx.run, 'motifs', 'clean', c + '.fa.clean.fas.rot') for c in ctx.codes]
+                            + [p for p in (os.path.join(ctx.run, 'motifs', 'clean', 'clusters_by_file', c + '.fa.clean.fas') for c in ctx.codes)
+                               if os.path.isdir(p)],
+                            {'id': ctx.cfg.data['discovery']['cluster_id'], 'strand': ctx.cfg.data['discovery']['strand']})
 
 
 # ----------------------------------------------------------------------------- 08-10 seeds
@@ -666,7 +684,7 @@ def st_assign(ctx: Ctx):
     return [os.path.join(s, fam + '.members.fa') for fam in ctx.families] + [rep]
 
 
-st_assign.plan = lambda ctx: ([ctx.cfg.data['family_assignment'], os.path.join(ctx.run, 'cross', 'cross_species_centroids.fa')], {})
+st_assign.plan = lambda ctx: ([ctx.cfg.data['family_assignment'], os.path.join(ctx.run, 'cross', 'cross_species_centroids.fa')] + _cons_files(ctx), {})
 
 
 @stage('10_seeds', needs=('gawk',))
@@ -733,7 +751,7 @@ def st_expand(ctx: Ctx):
     return outs + [os.path.join(x, 'expansions.tsv')]
 
 
-st_expand.plan = lambda ctx: ([os.path.join(ctx.run, 'seeds', f + '.bed') for f in ctx.families] + [fd['consensus'] for fd in ctx.cfg.families.values()],
+st_expand.plan = lambda ctx: ([os.path.join(ctx.run, 'seeds', f + '.bed') for f in ctx.families] + _cons_files(ctx) + _genome_files(ctx),
                               {'expansion': ctx.cfg.data['expansion'], 'scan': ctx.cfg.data['scan'], 'mono': {f: fd['mono'] for f, fd in ctx.cfg.families.items()}})
 
 
@@ -747,7 +765,8 @@ def st_master(ctx: Ctx):
     return [os.path.join(m, 'MASTER.merged.bed')]
 
 
-st_master.plan = lambda ctx: ([os.path.join(ctx.run, 'expand', 'out_' + f + '.expanded_merged.bed') for f in ctx.families], {})
+st_master.plan = lambda ctx: ([os.path.join(ctx.run, 'expand', 'out_' + f + '.expanded_merged.bed') for f in ctx.families]
+                              + [p for p in [os.path.join(ctx.run, 'expand', 'expansions.tsv')] if os.path.isfile(p)], {})
 
 
 @stage('13_rescan', needs=('ssearch36', 'samtools', 'bedtools', 'parallel'))
@@ -764,7 +783,7 @@ def st_rescan(ctx: Ctx):
     return outs + [os.path.join(r, 'arbitration_inputs.tsv')]
 
 
-st_rescan.plan = lambda ctx: ([os.path.join(ctx.run, 'master', 'MASTER.merged.bed')] + [fd['consensus'] for fd in ctx.cfg.families.values()],
+st_rescan.plan = lambda ctx: ([os.path.join(ctx.run, 'master', 'MASTER.merged.bed')] + _cons_files(ctx) + _genome_files(ctx),
                               {'scan': ctx.cfg.data['scan'], 'jobs': ctx.cfg.data['expansion']['jobs']})
 
 
@@ -860,7 +879,8 @@ def st_catalogue(ctx: Ctx):
     return [os.path.join(cat, f) for f in ('MASTER.merged.bed', 'MASTER.loci.segmented.bed', 'MASTER.final_assignment.tsv', 'MASTER.locus_bits.tsv')]
 
 
-st_catalogue.plan = lambda ctx: ([os.path.join(ctx.run, 'arbitration', 'MASTER.final_assignment.tsv')] + ([ctx.cfg.data['manual_loci']] if ctx.cfg.data.get('manual_loci') else []), {})
+st_catalogue.plan = lambda ctx: ([os.path.join(ctx.run, 'arbitration', 'MASTER.final_assignment.tsv')] + ([ctx.cfg.data['manual_loci']] if ctx.cfg.data.get('manual_loci') else [])
+                                 + _cons_files(ctx) + _genome_files(ctx), {})
 
 
 # ----------------------------------------------------------------------------- 16-19 regions, terminal, subfamily, orthology
@@ -876,7 +896,8 @@ def st_regions(ctx: Ctx):
     return [os.path.join(reg, f) for f in ('locus_master.tsv', 'manifest.tsv', 'all_regions.fa')]
 
 
-st_regions.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', f) for f in ('MASTER.merged.bed', 'MASTER.loci.segmented.bed', 'MASTER.final_assignment.tsv')], {})
+st_regions.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', f) for f in ('MASTER.merged.bed', 'MASTER.loci.segmented.bed', 'MASTER.final_assignment.tsv')]
+                               + _genome_files(ctx), {})
 
 
 @stage('17_terminal', needs=('ssearch36', 'samtools'))
@@ -892,7 +913,9 @@ def st_terminal(ctx: Ctx):
     return [os.path.join(reg, f) for f in ('terminal_monomers.tsv', 'locus_boundary_phase.tsv', 'boundary_phase.json')]
 
 
-st_terminal.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in ('locus_master.tsv', 'manifest.tsv')], {'terminal': ctx.cfg.data['terminal']})
+st_terminal.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in ('locus_master.tsv', 'manifest.tsv', 'all_regions.fa')]
+                                + [os.path.join(ctx.run, 'tables', 'families.tsv')] + _cons_files(ctx) + _genome_files(ctx),
+                                {'terminal': ctx.cfg.data['terminal']})
 
 
 @stage('18_subfamily', needs=('ssearch36', 'samtools'))
@@ -912,7 +935,8 @@ def st_subfamily(ctx: Ctx):
     return [os.path.join(reg, f) for f in ('locus_subfamily.tsv', 'subfamily.json', 'terminal_monomers.json')]
 
 
-st_subfamily.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in ('locus_master.tsv', 'terminal_monomers.tsv')],
+st_subfamily.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in ('locus_master.tsv', 'terminal_monomers.tsv', 'manifest.tsv', 'all_regions.fa')]
+                                 + [os.path.join(ctx.run, 'tables', 'members.tsv')] + _subx_inputs(ctx),
                                  {'subfamily': ctx.cfg.data.get('subfamily')})
 
 
@@ -930,7 +954,9 @@ def st_orthology(ctx: Ctx):
     return [os.path.join(out, f) for f in ('flanks.json', 'flank_orthologs.json', 'ortho_pairs.tsv')]
 
 
-st_orthology.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', 'locus_master.tsv')], {'orthology': ctx.cfg.data['orthology']})
+st_orthology.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', 'locus_master.tsv'), os.path.join(ctx.run, 'tables', 'genomes.tsv'),
+                                   os.path.join(ctx.run, 'tables', 'families.tsv')] + _cons_files(ctx) + _genome_files(ctx),
+                                  {'orthology': ctx.cfg.data['orthology']})
 
 
 @stage('20_candidates', needs=('ssearch36', 'samtools', 'bedtools'))
@@ -942,8 +968,12 @@ def st_candidates(ctx: Ctx):
     cb = os.path.join(ctx.run, 'motifs', 'clean', 'clusters_by_file')
     out = ctx.d('candidates')
     if not os.path.isdir(cb):
-        ctx.say('  no per-species clusters in this run (seeds were given): no singleton screen')
-        return []
+        given = (ctx.cfg.data.get('inputs') or {}).get('seeds') or {}
+        if set(given) >= set(ctx.families):
+            ctx.say('  no per-species clusters in this run (seeds were given for every family): no singleton screen')
+            return []
+        # discovery should have run here: a missing cluster folder is an error, not a reason to skip (GLM audit #78)
+        raise StageError('20_candidates: %s is missing although discovery ran for %s' % (cb, ', '.join(sorted(set(ctx.families) - set(given)))))
     cat_bed = os.path.join(ctx.run, 'catalogue', 'MASTER.merged.bed')
     env = ctx.env(MIN_BITS=ctx.cfg.data['expansion']['min_bits'])
     ctx.sh(['bash', os.path.join(ctx.scripts, '07_post_catalogue/singleton_screen.sh'), cb,
@@ -983,7 +1013,8 @@ def st_candidates(ctx: Ctx):
     return [ctab, os.path.join(out, 'candidates_summary.json')]
 
 
-st_candidates.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', 'MASTER.merged.bed'), os.path.join(ctx.run, 'tables', 'refs.rot')],
+st_candidates.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', 'MASTER.merged.bed'), os.path.join(ctx.run, 'tables', 'refs.rot')]
+                                  + _cons_files(ctx) + _genome_files(ctx) + _subx_inputs(ctx),
                                   {'min_bits': ctx.cfg.data['expansion']['min_bits'], 'flank': ctx.cfg.data['orthology']['flank_bp']})
 
 
@@ -1049,7 +1080,7 @@ def st_anchor(ctx: Ctx):
 
 st_anchor.plan = lambda ctx: ([fd['consensus'] for fd in ctx.cfg.families.values()]
                               + ([(ctx.cfg.data.get('subfamily') or {}).get('consensuses')] if (ctx.cfg.data.get('subfamily') or {}).get('consensuses') and os.path.exists(ctx.cfg.data['subfamily']['consensuses']) else []),
-                              {'anchor': ctx.cfg.data.get('anchor')})
+                              {'anchor': ctx.cfg.data.get('anchor'), 'members': (ctx.cfg.data.get('subfamily') or {}).get('members')})
 
 
 # ----------------------------------------------------------------------------- driver
