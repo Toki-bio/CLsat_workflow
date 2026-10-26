@@ -18,6 +18,9 @@ export LC_ALL=C   # byte-order sort: locus numbering must not depend on the loca
 #   SEG_MIN_RUN    bins a competing family must dominate to open a segment     [10]
 #   SEG_MIN_LOCUS  segments shorter than this are dropped or merged (SEG_SHORT) [2000]
 #   SEG_SHORT      drop (published) | merge                                    [drop]
+#   MAX_GAP_MONO   a run of non-satellite 1-kb bins this long (monomers x the longest family
+#                  monomer) cuts a locus; 0 = never cut (published behaviour)    [0]
+#   BIN_MIN_BITS   a 1-kb bin is satellite when its best window reaches this        [50]
 #   SCAN_WIN_MONO  stage-13 scan window in monomers (D3 width = this x MONO)  [2]
 #
 # D3 converts each scan row (1-based window start `pos`) to a 0-based BED interval of width
@@ -53,6 +56,8 @@ DELTA="${DELTA:-20}"              # UNIQUE_SEED contradiction threshold
 DELTA_AMBIG="${DELTA_AMBIG:-15}"  # CONFLICT/sub-locus/NO_SEED ambiguity threshold
 SEG_BIN="${SEG_BIN:-1000}"; SEG_MIN_RUN="${SEG_MIN_RUN:-10}"; SEG_MIN_LOCUS="${SEG_MIN_LOCUS:-2000}"
 export SEG_SHORT="${SEG_SHORT:-drop}"
+MAX_GAP_MONO="${MAX_GAP_MONO:-0}"
+[[ "$MAX_GAP_MONO" =~ ^[0-9]+$ ]] || die "MAX_GAP_MONO must be a non-negative integer, got '$MAX_GAP_MONO'"
 SCAN_WIN_MONO="${SCAN_WIN_MONO:-2}"   # stage-13 scan window in monomers (scan.win_mono); D3 window = this x MONO
 [[ "$SCAN_WIN_MONO" =~ ^[1-9][0-9]*$ ]] || die "SCAN_WIN_MONO must be a positive integer, got '$SCAN_WIN_MONO'"
 
@@ -122,6 +127,10 @@ done
 ##############################################################################
 log "D3b: segmenting composite loci"
 
+# gap limit in bp: monomers x the longest family monomer (the families of one run share one limit)
+maxmono=0; for m in "${MONOS[@]}"; do (( m > maxmono )) && maxmono=$m; done
+export SEG_MAX_GAP_BP=$(( MAX_GAP_MONO * maxmono ))
+
 FAMBITS_ARGS=()
 for i in "${!FAMS[@]}"; do FAMBITS_ARGS+=("${FAMS[$i]}" "${BITS[$i]}"); done
 python3 - "$OUT/MASTER.loci.key.bed" "$SEG_BIN" "$SEG_MIN_RUN" "$SEG_MIN_LOCUS" \
@@ -148,12 +157,18 @@ for fam,bf in zip(families,bits_files):
             b=(pos-1)//BIN   # pos is a 1-based window start; bins are 0-based like the BED (same pos-1 as D3)
             if bits>bins[scf][b][fam]: bins[scf][b][fam]=bits
     print(f"  Loaded {bf} ({fam})",file=sys.stderr)
-total_seg=0; n_split=0; out=open(out_file,"w")
+total_seg=0; n_split=0; n_gapcut=0; out=open(out_file,"w")
 # Segments shorter than MIN_LOCUS: the published run DROPPED them (default, SEG_SHORT=drop),
 # which removes sequence from the catalogue and leaves gaps in segment numbering
 # (e.g. L12.1, L12.3). SEG_SHORT=merge folds each short segment into its longer neighbour
 # instead. Either way every dropped/merged piece is written to <out>.short_segments.bed.
 SEG_SHORT=os.environ.get("SEG_SHORT","drop")
+BIN_MIN=float(os.environ.get("BIN_MIN_BITS","50"))
+MAX_GAP_BP=int(os.environ.get("SEG_MAX_GAP_BP","0"))
+GAP_BINS=-(-MAX_GAP_BP//BIN) if MAX_GAP_BP>0 else 0     # ceil: a run of this many non-satellite bins cuts the locus
+def is_sat(scf,b):
+    fb=bins[scf].get(b)
+    return bool(fb) and max(fb.values())>=BIN_MIN
 short_out=open(out_file+".short_segments.bed","w"); n_short=0; bp_short=0
 for scf,start,end,lid in loci:
     bin_start=start//BIN; bin_end=(end-1)//BIN
@@ -174,7 +189,29 @@ for scf,start,end,lid in loci:
             else: i+=1
         else: i+=1
     segments.append((seg_start_idx,len(dom)-1,cur_fam))
-    if len(segments)==1:
+    whole=(len(segments)==1)
+    if GAP_BINS:
+        # gap rule: a run of >= GAP_BINS non-satellite bins is part of no locus; it cuts the segment it lies in
+        gaps=[]; k=0
+        while k<len(dom):
+            if not is_sat(scf,bin_start+k):
+                k2=k
+                while k2<len(dom) and not is_sat(scf,bin_start+k2): k2+=1
+                if k2-k>=GAP_BINS: gaps.append((k,k2-1))
+                k=k2
+            else: k+=1
+        if gaps:
+            cut=[]
+            for sb,eb,fam in segments:
+                cur=sb
+                for ga,gb in gaps:
+                    if gb<cur or ga>eb: continue
+                    if ga>cur: cut.append((cur,ga-1,fam))
+                    cur=max(cur,gb+1)
+                if cur<=eb: cut.append((cur,eb,fam))
+            if cut!=segments: n_gapcut+=1
+            segments=cut; whole=whole and len(cut)==1 and cut[0][0]==0 and cut[0][1]==len(dom)-1
+    if whole:
         out.write(f"{scf}\t{start}\t{end}\t{lid}\n"); total_seg+=1
     else:
         n_split+=1
@@ -205,7 +242,6 @@ out.close(); short_out.close()
 # arbitration rule for segments, conflicts and unseeded loci (D6). The locus-wide maximum window alone let one strong
 # window of another family decide a whole segment (author's decision 2026-10-25).
 from collections import Counter
-BIN_MIN=float(os.environ.get("BIN_MIN_BITS","50"))
 with open(out_file+".binfam.tsv","w") as bf:
     for line in open(out_file):
         scf,s,e,lid=line.rstrip("\n").split("\t")[:4]; s=int(s); e=int(e)
@@ -213,12 +249,17 @@ with open(out_file+".binfam.tsv","w") as bf:
         for b in range(s//BIN,(e-1)//BIN+1):
             fb=bins[scf].get(b)
             if fb and max(fb.values())>=BIN_MIN: c[max(sorted(fb.keys()),key=fb.get)]+=1
+        # non-satellite 1-kb bins inside the locus: their number and the longest run
+        gb=0; lr=0; cr=0
+        for b in range(s//BIN,(e-1)//BIN+1):
+            if is_sat(scf,b): cr=0
+            else: gb+=1; cr+=1; lr=max(lr,cr)
         if c:
             maj,nm=sorted(c.items(),key=lambda kv:(-kv[1],kv[0]))[0]
-            bf.write(f"{lid}\t{maj}\t{nm}\t{sum(c.values())}\t"+",".join(f"{k}:{v}" for k,v in sorted(c.items()))+"\n")
+            bf.write(f"{lid}\t{maj}\t{nm}\t{sum(c.values())}\t"+",".join(f"{k}:{v}" for k,v in sorted(c.items()))+f"\t{gb}\t{lr}\n")
         else:
-            bf.write(f"{lid}\t.\t0\t0\t.\n")
-print(f"  Original: {len(loci)}, split: {n_split}, output: {total_seg}",file=sys.stderr)
+            bf.write(f"{lid}\t.\t0\t0\t.\t{gb}\t{lr}\n")
+print(f"  Original: {len(loci)}, split: {n_split}, output: {total_seg}, cut at a gap of >= {GAP_BINS} bins: {n_gapcut}",file=sys.stderr)
 print(f"  Short segments (<{MIN_LOCUS} bp) {SEG_SHORT}: {n_short} pieces, {bp_short} bp -> {out_file}.short_segments.bed",file=sys.stderr)
 PYEOF
 
@@ -303,7 +344,9 @@ log "D6: arbitration (three-branch; family of segments, conflicts and unseeded l
 mv "$LOCI_BED.binfam.tsv" "$OUT/MASTER.locus_binfam.tsv"
 check_file "$OUT/MASTER.locus_binfam.tsv"
 
-# MASTER.locus_binfam.tsv: locus  majority_family  n_bins_won  n_bins  per-family counts (bins whose best window
+# MASTER.locus_binfam.tsv: locus  majority_family  n_bins_won  n_bins  per-family counts  gap_bins  longest_gap_bins
+# (gap_bins = 1-kb bins inside the locus whose best window is under BIN_MIN_BITS)
+# (per-family counts: bins whose best window
 # reaches BIN_MIN_BITS). Branches 1-2 take the majority family (the locus-wide maximum window decided before
 # 2026-10-25, so one strong window of another family could decide a whole segment); its maximum bits and the strongest
 # other family are still reported, delta = assigned - strongest other (may be negative). _AMBIGUOUS: the majority

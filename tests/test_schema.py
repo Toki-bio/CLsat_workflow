@@ -17,7 +17,7 @@ def test_defaults_are_published_values(project):
     assert x["expansion"]["max_steps"] == 500 and x["expansion"]["probe_mono"] == 100
     assert x["arbitration"] == {"delta": 20.0, "delta_ambig": 15.0, "seg_bin": 1000, "seg_min_run": 10,
                                 "seg_min_locus": 2000, "short_segments": "drop",
-                                "bin_min_bits": None, "bin_share": 0.75}   # bin-majority family: not in the published run (2026-10-25)
+                                "bin_min_bits": None, "max_gap_monomers": 100, "bin_share": 0.75}   # bin-majority family: not in the published run (2026-10-25)
     assert x["orthology"] == {"flank_bp": 600, "guard_bp": 0, "min_aln": 200, "min_pid": 80.0}
     assert x["subfamily"]["confident_delta"] == 10.0
     assert x["scan"] == {"win_mono": 2, "step_mono": 1, "min_bits": 0.0}

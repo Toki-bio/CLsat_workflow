@@ -133,6 +133,11 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                           doc="BIN_MIN_BITS: a 1-kb bin counts as satellite when its best window reaches this many "
                               "bits (used by the bin-majority family rule). Absolute scores depend on the monomer "
                               "length and the scoring, so set it per satellite. Default: expansion.min_bits."),
+        "max_gap_monomers": F("int", default=100, min=0,
+                              doc="MAX_GAP_MONO: a run of non-satellite 1-kb bins (best window under bin_min_bits) at least this "
+                                  "long, in monomers x the longest family monomer, cuts a locus; the gap belongs to no locus. "
+                                  "Shorter gaps stay inside the locus and are reported (gap_bins). 0 = never cut. Not in the "
+                                  "published run (author's decision 2026-10-26: 100 monomers = 14.6 kb for CLsat)."),
         "bin_share": F("float", default=0.75, min=0, max=1,
                        doc="BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most "
                            "1-kb bins (bins whose best window reaches arbitration.bin_min_bits); the call is _AMBIGUOUS when "
