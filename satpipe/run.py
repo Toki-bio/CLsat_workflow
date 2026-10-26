@@ -794,7 +794,8 @@ def st_arbitrate(ctx: Ctx):
     env = ctx.env(DELTA=a['delta'], DELTA_AMBIG=a['delta_ambig'], SEG_BIN=a['seg_bin'], SEG_MIN_RUN=a['seg_min_run'],
                   SEG_MIN_LOCUS=a['seg_min_locus'], SEG_SHORT=a['short_segments'],
                   SCAN_WIN_MONO=ctx.cfg.data['scan']['win_mono'],   # the stage-13 window width, in monomers
-                  BIN_MIN_BITS=ctx.cfg.data['expansion']['min_bits'], BIN_SHARE=a['bin_share'])
+                  BIN_MIN_BITS=(a['bin_min_bits'] if a['bin_min_bits'] is not None else ctx.cfg.data['expansion']['min_bits']),
+                  BIN_SHARE=a['bin_share'])
     ctx.sh(['bash', os.path.join(ctx.scripts, '03_master_arbitration/arbitration_patched.sh'),
             os.path.join(ctx.run, 'rescan', 'arbitration_inputs.tsv'), os.path.join(ctx.run, 'master', 'MASTER.merged.bed'), out],
            '14_arbitrate', env=env)

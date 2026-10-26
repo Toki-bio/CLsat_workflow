@@ -129,9 +129,13 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "short_segments": F("enum", default="drop", choices=["drop", "merge"],
                             doc="SEG_SHORT: `drop` is the published behaviour; `merge` folds short segments "
                                 "into the longer neighbour."),
+        "bin_min_bits": F("float", default=None, min=0,
+                          doc="BIN_MIN_BITS: a 1-kb bin counts as satellite when its best window reaches this many "
+                              "bits (used by the bin-majority family rule). Absolute scores depend on the monomer "
+                              "length and the scoring, so set it per satellite. Default: expansion.min_bits."),
         "bin_share": F("float", default=0.75, min=0, max=1,
                        doc="BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most "
-                           "1-kb bins (bins whose best window reaches expansion.min_bits); the call is _AMBIGUOUS when "
+                           "1-kb bins (bins whose best window reaches arbitration.bin_min_bits); the call is _AMBIGUOUS when "
                            "that family holds less than this share of the bins. Not in the published run, which used "
                            "the locus-wide maximum window (author's decision 2026-10-25)."),
     }),
