@@ -149,6 +149,23 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "guard_bp": F("int", default=0, min=0, doc="GUARD: extra distance a flank must keep from another locus."),
         "min_aln": F("int", default=200, min=1, doc="Minimum aligned length for an ortholog hit."),
         "min_pid": F("float", default=80.0, min=0, max=100, doc="Minimum percent identity for an ortholog hit."),
+        "tandem_mask": F("bool", default=True,
+                         doc="Mask flank letters inside any TRF array of the genome (the run's genome-wide TRF calls, every "
+                             "period) before the copy test and the ortholog search; a flank with fewer than min_aln unmasked "
+                             "letters is class 'tandem', no anchor (author's decision 2026-11-08). The published run had no mask."),
+        "single_copy": F("bool", default=True,
+                         doc="An anchor flank must be single copy in its own whole genome: no second place (another locus "
+                             "flank by ssearch36, or anywhere by minimap2 -x asm20) with >= copy_min_pid over >= copy_min_aln; "
+                             "else class 'repeated' (author's decision 2026-11-08). The published run did not test this."),
+        "copy_min_pid": F("float", default=80.0, min=0, max=100, doc="Identity (%) of a second copy for single_copy."),
+        "copy_min_aln": F("int", default=0, min=0, doc="Aligned letters of a second copy for single_copy (0 = min_aln)."),
+        "clear_margin": F("float", default=0.9, min=0, max=1,
+                          doc="Clear best hit: in each target genome the best locus must beat the second-best locus, "
+                              "second < clear_margin x best bits; ties never decide. 0 = the published rule (best bits, "
+                              "first hit wins a tie)."),
+        "reciprocal": F("bool", default=True,
+                        doc="Keep a pair only if each locus is the other's clear best hit (one-way hits are listed in "
+                            "ortho/ortho_oneway.tsv). Needs clear_margin > 0."),
     }),
     "subfamily": F("block", doc="Sub-subfamily assignment at array boundaries.", fields={
         "consensuses": F("path",

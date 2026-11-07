@@ -18,7 +18,11 @@ def test_defaults_are_published_values(project):
     assert x["arbitration"] == {"delta": 20.0, "delta_ambig": 15.0, "seg_bin": 1000, "seg_min_run": 10,
                                 "seg_min_locus": 2000, "short_segments": "drop",
                                 "bin_min_bits": None, "max_gap_monomers": 100, "bin_share": 0.75}   # bin-majority family: not in the published run (2026-10-25)
-    assert x["orthology"] == {"flank_bp": 600, "guard_bp": 0, "min_aln": 200, "min_pid": 80.0}
+    assert x["orthology"] == {"flank_bp": 600, "guard_bp": 0, "min_aln": 200, "min_pid": 80.0,
+                              # single-copy anchors: not in the published run (author 2026-11-08); the published
+                              # configs set tandem_mask/single_copy false, clear_margin 0, reciprocal false
+                              "tandem_mask": True, "single_copy": True, "copy_min_pid": 80.0, "copy_min_aln": 0,
+                              "clear_margin": 0.9, "reciprocal": True}
     assert x["subfamily"]["confident_delta"] == 10.0
     assert x["scan"] == {"win_mono": 2, "step_mono": 1, "min_bits": 0.0}
 

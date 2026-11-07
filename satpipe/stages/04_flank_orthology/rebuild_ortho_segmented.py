@@ -55,7 +55,35 @@ ap.add_argument('--min-aln', type=int, default=200)
 ap.add_argument('--min-pid', type=float, default=80.0)
 ap.add_argument('--guard', type=int, default=0)
 ap.add_argument('--key-pairs', default='', help='comma list of species pairs a:b to print as a KEY line')
+# single-copy anchors (flank_copy.py; author 2026-11-08). All off by default = the earlier behaviour exactly.
+ap.add_argument('--trf-dat', action='append', default=[], metavar='CODE=PATH',
+                help='genome-wide TRF .dat of a genome (repeatable; several per genome allowed): mask tandem letters')
+ap.add_argument('--single-copy', action='store_true', help='anchor flanks must be single copy in their own genome')
+ap.add_argument('--copy-min-pid', type=float, default=80.0, help='identity of a second copy (%%)')
+ap.add_argument('--copy-min-aln', type=int, default=0, help='aligned letters of a second copy (0 = --min-aln)')
+ap.add_argument('--clear-margin', type=float, default=0.0,
+                help='best hit must beat the second-best locus: second < margin x best bits (0 = off, old best-hit rule)')
+ap.add_argument('--reciprocal', action='store_true', help='keep a pair only if both loci choose each other')
+ap.add_argument('--threads', type=int, default=8)
 a = ap.parse_args()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import flank_copy as FC  # noqa: E402
+TRF_DAT = collections.defaultdict(list)
+for x in a.trf_dat:
+    if '=' not in x:
+        sys.exit('--trf-dat wants CODE=PATH, got %r' % x)
+    c, pth = x.split('=', 1)
+    if not os.path.isfile(pth):
+        sys.exit('--trf-dat %s: no such file' % pth)
+    TRF_DAT[c].append(pth)
+SINGLE = a.single_copy
+COPY_MIN_PID = a.copy_min_pid
+COPY_MIN_ALN = a.copy_min_aln or a.min_aln
+CLEAR_MARGIN = a.clear_margin
+RECIPROCAL = a.reciprocal
+THREADS = a.threads
+if RECIPROCAL and CLEAR_MARGIN <= 0:
+    sys.exit('--reciprocal needs --clear-margin > 0')
 
 OUT = a.out
 os.makedirs(OUT, exist_ok=True)
@@ -185,6 +213,33 @@ for k in list(flanks):
         del flanks[k]; fclass[k] = 'satellite'
 print('after residual-satellite drop: %d unique anchors' % len(flanks), flush=True)
 
+# ---- 3b. tandem mask from the run's genome-wide TRF calls (flank_copy.py rule 1) ----
+masked_bp = {}
+if TRF_DAT:
+    need = collections.defaultdict(set)
+    for (i, side), (sp, seq, (scf, fs, fe)) in flanks.items():
+        need[sp].add(scf)
+    TIV = {}
+    for sp, paths in TRF_DAT.items():
+        acc = collections.defaultdict(list)
+        for pth in paths:
+            for scf, iv in FC.parse_trf_dat(pth, need.get(sp, set())).items():
+                acc[scf].extend(iv)
+        TIV[sp] = {scf: FC.merge(iv) for scf, iv in acc.items()}
+    miss = sorted(sp for sp in need if sp not in TRF_DAT)
+    if miss:
+        sys.exit('--trf-dat given but no TRF calls for genome(s): %s' % ', '.join(miss))
+    for k in list(flanks):
+        sp, oseq, (scf, fs, fe) = flanks[k]
+        raw = flankseq[k][0]
+        mseq, n = FC.mask(raw, fs, TIV[sp].get(scf, []))
+        masked_bp[k] = n
+        if FC.unmasked(mseq) < MIN_ALN:
+            del flanks[k]; fclass[k] = 'tandem'; continue
+        flanks[k] = (sp, mseq if k[1] == 'R' else rc(mseq), (scf, fs, fe))
+    print('after tandem mask: %d anchors (%d flanks mostly tandem repeat)'
+          % (len(flanks), sum(1 for v in fclass.values() if v == 'tandem')), flush=True)
+
 # ---- 4. cross-assembly orthology at three thresholds (for viewer 70/80/90) ----
 with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
@@ -194,6 +249,7 @@ o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '4000',
 
 # collect all cross-assembly hits with alen>=MIN_ALN (threshold on pid applied later per-level)
 allhits = []   # (q, t, pid, alen, bits, side)
+own_hits = collections.defaultdict(set)   # flank -> other loci of the SAME genome it matches (copy test, rule 2)
 for line in o.splitlines():
     if line.startswith('#'):
         continue
@@ -205,10 +261,13 @@ for line in o.splitlines():
         pid, alen, bits = float(p[2]), int(p[3]), float(p[11])
     except ValueError:
         continue
-    if q == t or alen < MIN_ALN:
-        continue
     qi, ti = int(q.split('_')[0]), int(t.split('_')[0])
     if loci[qi][0] == loci[ti][0]:
+        # same genome: never an ortholog; with --single-copy it is evidence that the flank is not single copy
+        if SINGLE and qi != ti and alen >= COPY_MIN_ALN and pid >= COPY_MIN_PID:
+            own_hits[q].add(ti)
+        continue
+    if q == t or alen < MIN_ALN:
         continue
     side = q.split('_')[1]
     # NOTE: no side restriction -- matches clean_ortho_pairs.py exactly.
@@ -216,23 +275,92 @@ for line in o.splitlines():
     # when two orthologous arrays are in opposite orientations (inversion).
     allhits.append((q, t, pid, alen, bits, side))
 
+# ---- 4b. single copy in the own whole genome (flank_copy.py rule 2) ----
+copies = {}    # (i, side) -> (other loci hit, other genome places, status)
+if SINGLE:
+    MM = shutil.which('minimap2') or sys.exit('--single-copy needs minimap2 on PATH')
+    for k in list(flanks):
+        nm = '%d_%s' % k
+        copies[k] = [len(own_hits.get(nm, ())), None, '']
+    by_sp = collections.defaultdict(list)
+    for k, (sp, seq, g) in flanks.items():
+        if not copies[k][0]:                      # already repeated among locus flanks: no genome search needed
+            by_sp[sp].append(k)
+    for sp in ASM:
+        ks = by_sp.get(sp)
+        if not ks:
+            continue
+        qfa = OUT + '/copytest_%s.fa' % sp
+        place = {}
+        with open(qfa, 'w') as f:
+            for k in ks:
+                nm = '%d_%s' % k
+                f.write('>%s\n%s\n' % (nm, flanks[k][1]))
+                scf, fs, fe = flanks[k][2]
+                place[nm] = (scf, fs, fe)
+        r = subprocess.run([MM, '-x', 'asm20', '-c', '-N', '200', '-p', '0.2', '-t', str(THREADS), GEN[sp], qfa],
+                           capture_output=True, text=True)
+        if r.returncode:
+            sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
+        n = FC.paf_other_copies(r.stdout.splitlines(), place, COPY_MIN_PID, COPY_MIN_ALN)
+        for k in ks:
+            copies[k][1] = n.get('%d_%s' % k, 0)
+    for k in list(flanks):
+        c = copies[k]
+        if c[0] or (c[1] or 0):
+            c[2] = 'repeated'
+            del flanks[k]; fclass[k] = 'repeated'
+        else:
+            c[2] = 'single'
+    anchor = set('%d_%s' % k for k in flanks)
+    allhits = [h for h in allhits if h[0] in anchor and h[1] in anchor]
+    print('after single-copy test: %d anchors (%d repeated in their own genome)'
+          % (len(flanks), sum(1 for v in fclass.values() if v == 'repeated')), flush=True)
+
 # MIN_PID pairs (the manuscript/Fig-3 set), single best per target assembly per query
-best = collections.defaultdict(dict)
-for q, t, pid, alen, bits, side in allhits:
-    if pid < MIN_PID:
-        continue
-    tsp = loci[int(t.split('_')[0])][0]
-    if tsp not in best[q] or bits > best[q][tsp][0]:
-        best[q][tsp] = (bits, t, pid, alen)
 pairs = set()
 detail = {}
-for q, d in best.items():
-    for tsp, (bits, t, pid, alen) in d.items():
-        # undirected pair keyed by locus id (strip _side)
-        qL, tL = lid_of[int(q.split('_')[0])], lid_of[int(t.split('_')[0])]
-        key = tuple(sorted((qL, tL)))
+oneway = set()
+if CLEAR_MARGIN > 0:
+    # rules 3 and 4: clear best locus per query flank and target genome, then reciprocal
+    cand = collections.defaultdict(list)
+    for q, t, pid, alen, bits, side in allhits:
+        if pid < MIN_PID:
+            continue
+        tsp = loci[int(t.split('_')[0])][0]
+        cand[(q, tsp)].append((bits, lid_of[int(t.split('_')[0])], pid, alen))
+    directed = {}
+    for (q, tsp), hits in sorted(cand.items()):
+        b = FC.clear_best(hits, CLEAR_MARGIN)
+        if b is None:
+            continue
+        qL = lid_of[int(q.split('_')[0])]
+        d = (qL, b[1])
+        if d not in directed or b[0] > directed[d][0]:
+            directed[d] = (b[0], b[2], b[3])
+    if RECIPROCAL:
+        keep, oneway = FC.reciprocal_pairs(set(directed))
+    else:
+        keep = set(tuple(sorted(d)) for d in directed)
+    for key in keep:
+        v = max((directed[d] for d in (key, key[::-1]) if d in directed), key=lambda x: x[0])
         pairs.add(key)
-        detail[key] = (pid, alen, bits)
+        detail[key] = (v[1], v[2], v[0])
+else:
+    best = collections.defaultdict(dict)
+    for q, t, pid, alen, bits, side in allhits:
+        if pid < MIN_PID:
+            continue
+        tsp = loci[int(t.split('_')[0])][0]
+        if tsp not in best[q] or bits > best[q][tsp][0]:
+            best[q][tsp] = (bits, t, pid, alen)
+    for q, d in best.items():
+        for tsp, (bits, t, pid, alen) in d.items():
+            # undirected pair keyed by locus id (strip _side)
+            qL, tL = lid_of[int(q.split('_')[0])], lid_of[int(t.split('_')[0])]
+            key = tuple(sorted((qL, tL)))
+            pairs.add(key)
+            detail[key] = (pid, alen, bits)
 
 # ---- matrix ----
 M = collections.Counter()
@@ -296,6 +424,21 @@ with open(OUT + '/ortho_pairs.tsv', 'w') as f:
     for (x, y) in sorted(pairs):
         pid, alen, bits = detail[(x, y)]
         f.write('%s\t%s\t%s\t%s\t%.1f\t%d\t%.1f\n' % (x, y, lid2sp[x], lid2sp[y], pid, alen, bits))
+
+if TRF_DAT or SINGLE:
+    # per anchor-candidate flank: tandem letters masked, other loci / other genome places hit, verdict
+    with open(OUT + '/flank_copies.tsv', 'w') as f:
+        f.write('locus\tside\tgenome\tmasked_tandem_bp\tother_locus_flanks\tother_genome_places\tclass\n')
+        for (i, side) in sorted(set(masked_bp) | set(copies), key=lambda k: (lid_of[k[0]], k[1])):
+            c = copies.get((i, side), ['', '', ''])
+            f.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (lid_of[i], side, loci[i][0], masked_bp.get((i, side), ''),
+                                                    c[0], '' if c[1] is None else c[1], fclass[(i, side)]))
+if RECIPROCAL:
+    with open(OUT + '/ortho_oneway.tsv', 'w') as f:
+        f.write('locusA\tlocusB\tspA\tspB\n')
+        for x, y in sorted(oneway):
+            f.write('%s\t%s\t%s\t%s\n' % (x, y, lid2sp[x], lid2sp[y]))
+    print('one-way (not reciprocal) clear best hits, dropped: %d' % len(oneway))
 
 print('\nwrote flanks.json, flank_orthologs.json, flank_class.tsv, ortho_pairs.tsv, ortho_matrix.txt in %s' % OUT)
 print('DONE_ORTHO')

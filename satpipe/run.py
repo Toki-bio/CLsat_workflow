@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import datetime as dt
+import glob
 import hashlib
 import json
 import os
@@ -943,14 +944,43 @@ st_subfamily.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', f) for f in (
                                  {'subfamily': ctx.cfg.data.get('subfamily')})
 
 
-@stage('19_orthology', needs=('ssearch36', 'samtools'))
+def _orth_trf(ctx):
+    """Genome-wide TRF calls of the run, for the tandem mask of stage 19: trf/<code>.dat plus the chunked scans
+    of large scaffolds (large/<code>/<scaffold>/scaf.trf.dedup.dat)."""
+    out = []
+    for c in ctx.codes:
+        p = os.path.join(ctx.run, 'trf', c + '.dat')
+        if os.path.isfile(p):
+            out.append((c, p))
+        for q in sorted(glob.glob(os.path.join(ctx.run, 'large', c, '*', 'scaf.trf.dedup.dat'))):
+            out.append((c, q))
+    return out
+
+
+@stage('19_orthology', needs=('ssearch36', 'samtools', 'minimap2'))
 def st_orthology(ctx: Ctx):
     o = ctx.cfg.data['orthology']
     out = ctx.d('ortho')
-    ctx.sh(['python3', os.path.join(ctx.scripts, '04_flank_orthology/rebuild_ortho_segmented.py'),
-            '--loci', os.path.join(ctx.run, 'regions', 'locus_master.tsv'), '--genomes', os.path.join(ctx.run, 'tables', 'genomes.tsv'),
-            '--families', os.path.join(ctx.run, 'tables', 'families.tsv'), '--out', out,
-            '--flank', o['flank_bp'], '--min-aln', o['min_aln'], '--min-pid', o['min_pid'], '--guard', o['guard_bp']], '19_orthology')
+    cmd = ['python3', os.path.join(ctx.scripts, '04_flank_orthology/rebuild_ortho_segmented.py'),
+           '--loci', os.path.join(ctx.run, 'regions', 'locus_master.tsv'), '--genomes', os.path.join(ctx.run, 'tables', 'genomes.tsv'),
+           '--families', os.path.join(ctx.run, 'tables', 'families.tsv'), '--out', out,
+           '--flank', o['flank_bp'], '--min-aln', o['min_aln'], '--min-pid', o['min_pid'], '--guard', o['guard_bp']]
+    if o['tandem_mask']:
+        trf = _orth_trf(ctx)
+        have = set(c for c, _ in trf)
+        lost = [c for c in ctx.codes if c not in have]
+        if lost:
+            raise StageError('19_orthology: orthology.tandem_mask needs the TRF calls of every genome; none for %s' % ', '.join(lost))
+        for c, p in trf:
+            cmd += ['--trf-dat', '%s=%s' % (c, p)]
+    if o['single_copy']:
+        cmd += ['--single-copy', '--copy-min-pid', o['copy_min_pid'], '--copy-min-aln', o['copy_min_aln'],
+                '--threads', ctx.cfg.data['expansion']['jobs']]
+    if o['clear_margin'] > 0:
+        cmd += ['--clear-margin', o['clear_margin']]
+        if o['reciprocal']:
+            cmd += ['--reciprocal']
+    ctx.sh(cmd, '19_orthology')
     pairs = sum(1 for _ in open(os.path.join(out, 'ortho_pairs.tsv'))) - 1
     ctx.manifest['ortholog_pairs'] = pairs
     ctx.say('  ortholog locus pairs: %d' % pairs)
@@ -958,7 +988,8 @@ def st_orthology(ctx: Ctx):
 
 
 st_orthology.plan = lambda ctx: ([os.path.join(ctx.run, 'regions', 'locus_master.tsv'), os.path.join(ctx.run, 'tables', 'genomes.tsv'),
-                                   os.path.join(ctx.run, 'tables', 'families.tsv')] + _cons_files(ctx) + _genome_files(ctx),
+                                   os.path.join(ctx.run, 'tables', 'families.tsv')] + _cons_files(ctx) + _genome_files(ctx)
+                                  + ([q for _, q in _orth_trf(ctx)] if ctx.cfg.data['orthology']['tandem_mask'] else []),
                                   {'orthology': ctx.cfg.data['orthology']})
 
 

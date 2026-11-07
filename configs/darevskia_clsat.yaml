@@ -76,7 +76,9 @@ arbitration:
   seg_min_locus: 2000
   short_segments: drop    # published behaviour; merge is opt-in
 
-orthology: {flank_bp: 600, guard_bp: 0, min_aln: 200, min_pid: 80}
+# published behaviour: no tandem mask, no single-copy test, best hit with first-wins ties (the 2026-11-08 rules are off)
+orthology: {flank_bp: 600, guard_bp: 0, min_aln: 200, min_pid: 80,
+            tandem_mask: false, single_copy: false, clear_margin: 0, reciprocal: false}
 
 subfamily:
   # sub-subfamily consensus FASTA directory (subx/), not deposited; server only
