@@ -4,7 +4,7 @@ Two genomes, one satellite family (150-letter unit x 20). Cases (locus names = c
   B  left flank of Aa duplicated elsewhere in spa at 90 % (not at a locus)       -> Ba L 'repeated'; pair Ba-Bb via R
   C  spb holds two loci C1b, C2b whose flanks are independent 15 % mutants of
      Ca's flanks (C1b vs C2b ~73 %: each single copy) -> Ca hits both ~equally   -> no pair with rules on
-  D  left flank carries a 450-letter tandem repeat (20-letter unit)              -> Da L 'tandem'; pair Da-Db via R
+  D  left flank carries a 450-letter tandem repeat (60-letter unit)              -> Da L 'tandem'; pair Da-Db via R
   E  right flank of Ea has a 75 % copy elsewhere in spa                         -> stays single; pair Ea-Eb
 Writes <out>/genomes/*.fa, genomes.tsv, families.tsv, cons.fa, locus_master.tsv, expected.json."""
 import json
@@ -32,7 +32,7 @@ def mut(s, rate):
 UNIT = rnd(150)
 SAT = ''.join(mut(UNIT, 0.03) for _ in range(20))
 FL = {k: (rnd(600), rnd(600)) for k in 'ABCDE'}
-tandem = rnd(20) * 23   # 460 letters
+tandem = rnd(60) * 8    # 480 letters; a 60-letter unit passes the low-complexity rule, so only the TRF mask catches it
 FL['D'] = (FL['D'][0][:70] + tandem[:450] + FL['D'][0][520:600], FL['D'][1])
 assert len(FL['D'][0]) == 600
 
