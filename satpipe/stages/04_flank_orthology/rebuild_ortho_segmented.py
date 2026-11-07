@@ -298,8 +298,11 @@ if SINGLE:
                 f.write('>%s\n%s\n' % (nm, flanks[k][1]))
                 scf, fs, fe = flanks[k][2]
                 place[nm] = (scf, fs, fe)
-        r = subprocess.run([MM, '-x', 'asm20', '-c', '-N', '200', '-p', '0.2', '-t', str(THREADS), GEN[sp], qfa],
-                           capture_output=True, text=True)
+        # sensitive seeding, every secondary kept: bench 2026-11-08 (tests/flank_copy_toy/bench_copy_search.py, 600-letter
+        # flanks, copies with substitutions + indels): this finds 20/20 copies at 90, 85 and 82 %, 14/20 at 80 %, 0/20
+        # false at 75 %; '-x asm20 -p 0.2' found 14/20 at 90 % and 1/20 at 85 %.
+        r = subprocess.run([MM, '-k13', '-w4', '-s40', '-m25', '-A2', '-B4', '-O4,24', '-E2,1', '-c', '-N', '200', '-p', '0',
+                            '-t', str(THREADS), GEN[sp], qfa], capture_output=True, text=True)
         if r.returncode:
             sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
         n = FC.paf_other_copies(r.stdout.splitlines(), place, COPY_MIN_PID, COPY_MIN_ALN)

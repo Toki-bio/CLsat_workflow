@@ -53,7 +53,7 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `orthology.min_aln` | int |  | `200` | Minimum aligned length for an ortholog hit. |
 | `orthology.min_pid` | float |  | `80.0` | Minimum percent identity for an ortholog hit. |
 | `orthology.tandem_mask` | bool |  | `True` | Mask flank letters inside any TRF array of the genome (the run's genome-wide TRF calls, every period) before the copy test and the ortholog search; a flank with fewer than min_aln unmasked letters is class 'tandem', no anchor (author's decision 2026-11-08). The published run had no mask. |
-| `orthology.single_copy` | bool |  | `True` | An anchor flank must be single copy in its own whole genome: no second place (another locus flank by ssearch36, or anywhere by minimap2 -x asm20) with >= copy_min_pid over >= copy_min_aln; else class 'repeated' (author's decision 2026-11-08). The published run did not test this. |
+| `orthology.single_copy` | bool |  | `True` | An anchor flank must be single copy in its own whole genome: no second place (another locus flank by ssearch36, or anywhere by minimap2, sensitive seeding k13 w4) with >= copy_min_pid over >= copy_min_aln; else class 'repeated' (author's decision 2026-11-08). The published run did not test this. |
 | `orthology.copy_min_pid` | float |  | `80.0` | Identity (%) of a second copy for single_copy. |
 | `orthology.copy_min_aln` | int |  | `0` | Aligned letters of a second copy for single_copy (0 = min_aln). |
 | `orthology.clear_margin` | float |  | `0.9` | Clear best hit: in each target genome the best locus must beat the second-best locus, second < clear_margin x best bits; ties never decide. 0 = the published rule (best bits, first hit wins a tie). |

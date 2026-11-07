@@ -155,7 +155,7 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                              "letters is class 'tandem', no anchor (author's decision 2026-11-08). The published run had no mask."),
         "single_copy": F("bool", default=True,
                          doc="An anchor flank must be single copy in its own whole genome: no second place (another locus "
-                             "flank by ssearch36, or anywhere by minimap2 -x asm20) with >= copy_min_pid over >= copy_min_aln; "
+                             "flank by ssearch36, or anywhere by minimap2, sensitive seeding k13 w4) with >= copy_min_pid over >= copy_min_aln; "
                              "else class 'repeated' (author's decision 2026-11-08). The published run did not test this."),
         "copy_min_pid": F("float", default=80.0, min=0, max=100, doc="Identity (%) of a second copy for single_copy."),
         "copy_min_aln": F("int", default=0, min=0, doc="Aligned letters of a second copy for single_copy (0 = min_aln)."),
