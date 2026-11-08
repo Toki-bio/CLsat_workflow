@@ -24,15 +24,10 @@ _SATPIPE_CONFIG_SH=1
 
 SATPIPE_SCHEMA_TSV=${SATPIPE_SCHEMA_TSV:-$SATPIPE_LIB/schema.tsv}   # test hook: another branch's schema.tsv
 
-# Names of satpipe/tools.py TOOLS (the cross-check `tools.<k>: not a known tool`). Taken from tools.tsv (WP4) when it
-# exists, else this list; tests/port/golden_config.sh checks it against tools.py.
-_SATPIPE_TOOL_NAMES="bash gawk python3 trf vsearch mafft ssearch36 samtools bedtools parallel cons water blastn makeblastdb"
+# Names of satpipe/tools.py TOOLS (the cross-check `tools.<k>: not a known tool`), column 1 of tools.tsv (WP4);
+# tests/port/golden_config.sh checks it against tools.py.
 config_known_tools() {
-    if [ -f "$SATPIPE_LIB/tools.tsv" ]; then
-        "$GAWK" -F '\t' '!/^#/ && $1 != "" { printf "%s%s", (n++ ? " " : ""), $1 }' "$SATPIPE_LIB/tools.tsv"
-    else
-        printf '%s' "$_SATPIPE_TOOL_NAMES"
-    fi
+    "$GAWK" -F '\t' '!/^#/ && $1 != "" { printf "%s%s", (n++ ? " " : ""), $1 }' "$SATPIPE_LIB/tools.tsv"
 }
 
 # _config_abspath FILE   os.path.abspath: normpath(join(getcwd(), FILE)), no symlink resolution of FILE

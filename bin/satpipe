@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# satpipe - bash/gawk driver (PORT_SPEC section 1): subcommands check | config | stages | run | viewer | anchor, with the
+# options, messages and exit codes of the Python CLI (satpipe/cli.py:128-176, argparse). Exit 0 ok, 1 failed, 2 usage error.
+# run executes stages through lib/satpipe/run.sh (WP5) and viewer through lib/satpipe/viewer.sh (WP10) once those exist.
+# Bash-only additions (PORT_SPEC 2.1, 5b): `config --flat FILE` (TYPED flat config) and `run CFG --plan`.
+
+# The caller's PATH and LC_ALL, before common.sh sets LC_ALL=C: `satpipe check` probes tools in the caller's environment
+# (tools.py uses shutil.which on PATH and runs the tool with the inherited environment).
+if [ -z "${SATPIPE_USER_PATH_SET+x}" ]; then
+    if [ -n "${PATH+x}" ]; then SATPIPE_USER_PATH_SET=1; SATPIPE_USER_PATH=$PATH; else SATPIPE_USER_PATH_SET=0; SATPIPE_USER_PATH=; fi
+    if [ -n "${LC_ALL+x}" ]; then SATPIPE_USER_LC_ALL_SET=1; SATPIPE_USER_LC_ALL=$LC_ALL; else SATPIPE_USER_LC_ALL_SET=0; SATPIPE_USER_LC_ALL=; fi
+    if [ -n "${TMPDIR+x}" ]; then SATPIPE_USER_TMPDIR_SET=1; SATPIPE_USER_TMPDIR=$TMPDIR; else SATPIPE_USER_TMPDIR_SET=0; SATPIPE_USER_TMPDIR=; fi
+    export SATPIPE_USER_PATH_SET SATPIPE_USER_PATH SATPIPE_USER_LC_ALL_SET SATPIPE_USER_LC_ALL SATPIPE_USER_TMPDIR_SET SATPIPE_USER_TMPDIR
+fi
+# the driver's temporary files need a writable TMPDIR; check.py only measures TMPDIR's length, so a TMPDIR that does not
+# exist must not break the check (the check reads SATPIPE_USER_TMPDIR)
+if [ -n "${TMPDIR:-}" ] && ! { [ -d "$TMPDIR" ] && [ -w "$TMPDIR" ]; }; then export TMPDIR=/tmp; fi
+# the driver's own helpers (readlink, mktemp, timeout, ...) are found even when PATH lacks them (a check with an empty PATH)
+for _c in readlink dirname mktemp timeout rm cat; do
+    command -v "$_c" >/dev/null 2>&1 || { PATH=${PATH:+$PATH:}/usr/bin:/bin; break; }
+done
+unset _c
+
+set -uo pipefail
+_SELF=$(readlink -f -- "${BASH_SOURCE[0]}")
+# shellcheck source=../lib/satpipe/common.sh
+. "$(dirname -- "$(dirname -- "$_SELF")")/lib/satpipe/common.sh"
+require_gawk
+
+SATPIPE_VERSION=$(cat "$SATPIPE_LIB/VERSION")
+
+# ------------------------------------------------------------------ argparse texts (Python 3.13 argparse, 80 columns)
+_U_TOP='usage: satpipe [-h] [--version] {check,config,stages,run,viewer,anchor} ...'
+_U_CHECK='usage: satpipe check [-h] [--no-files] [--no-tools] [--json] config'
+_U_CONFIG='usage: satpipe config [-h] [--schema-doc] [config]'
+_U_STAGES='usage: satpipe stages [-h]'
+_U_RUN='usage: satpipe run [-h] [--from FROM_STAGE] [--to TO_STAGE] [--only ONLY]
+                   [--force] [--skip-tool-check] [--list-stages]
+                   config'
+_U_VIEWER='usage: satpipe viewer [-h] [--out OUT] [--viewer-html VIEWER_HTML]
+                      [--no-flank-scan]
+                      run_dir'
+_U_ANCHOR='usage: satpipe anchor [-h] [--check] [-o OUT] config fasta [fasta ...]'
+
+_help() {
+    case $1 in
+        top) cat <<'EOF'
+usage: satpipe [-h] [--version] {check,config,stages,run,viewer,anchor} ...
+
+Reusable satellite-DNA locus pipeline.
+
+positional arguments:
+  {check,config,stages,run,viewer,anchor}
+    check               validate a config: schema, input files, external tools
+    config              print the normalised config (defaults filled, paths
+                        resolved) or the schema docs
+    stages              list stage contracts and their wiring status
+    run                 run the stages (resumes: stages whose DONE marker
+                        matches are skipped)
+    viewer              assemble the viewer directory (data files +
+                        viewer_config.json + page) for a finished run
+    anchor              rotate FASTA files into the run's anchor frame, or
+                        verify that they are in it
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+EOF
+        ;;
+        check) cat <<'EOF'
+usage: satpipe check [-h] [--no-files] [--no-tools] [--json] config
+
+positional arguments:
+  config
+
+options:
+  -h, --help  show this help message and exit
+  --no-files  skip input-file checks (config authoring on another machine)
+  --no-tools  skip external-tool checks
+  --json
+EOF
+        ;;
+        config) cat <<'EOF'
+usage: satpipe config [-h] [--schema-doc] [config]
+
+positional arguments:
+  config
+
+options:
+  -h, --help    show this help message and exit
+  --schema-doc  print docs/config.md content
+EOF
+        ;;
+        stages) cat <<'EOF'
+usage: satpipe stages [-h]
+
+options:
+  -h, --help  show this help message and exit
+EOF
+        ;;
+        run) cat <<'EOF'
+usage: satpipe run [-h] [--from FROM_STAGE] [--to TO_STAGE] [--only ONLY]
+                   [--force] [--skip-tool-check] [--list-stages]
+                   config
+
+positional arguments:
+  config
+
+options:
+  -h, --help         show this help message and exit
+  --from FROM_STAGE  first stage to run (see --list-stages)
+  --to TO_STAGE      last stage to run
+  --only ONLY        comma-separated stage ids to run
+  --force            re-run selected stages even if their DONE marker matches
+  --skip-tool-check
+  --list-stages
+EOF
+        ;;
+        viewer) cat <<'EOF'
+usage: satpipe viewer [-h] [--out OUT] [--viewer-html VIEWER_HTML]
+                      [--no-flank-scan]
+                      run_dir
+
+positional arguments:
+  run_dir
+
+options:
+  -h, --help            show this help message and exit
+  --out OUT             output directory [<run_dir>/viewer]
+  --viewer-html VIEWER_HTML
+                        index.html to copy in [the copy vendored with satpipe]
+  --no-flank-scan       skip the +-5 kb flank background scan (needs
+                        ssearch36)
+EOF
+        ;;
+        anchor) cat <<'EOF'
+usage: satpipe anchor [-h] [--check] [-o OUT] config fasta [fasta ...]
+
+positional arguments:
+  config
+  fasta          FASTA file(s) or directories of them
+
+options:
+  -h, --help     show this help message and exit
+  --check        only verify; exit 1 if any record is out of frame (works on
+                 alignments)
+  -o, --out OUT  output file (single input only) [<input>.anchored.fa]
+EOF
+        ;;
+    esac
+}
+
+# _usage_error USAGE PROG MSG   argparse.error: usage + "PROG: error: MSG" on stderr, exit 2
+_usage_error() { printf '%s\n%s: error: %s\n' "$1" "$2" "$3" >&2; exit 2; }
+
+# ------------------------------------------------------------------ a small argparse
+# _ap_parse SUB ARGS...   parses the subcommand's arguments into AP_<dest> variables and AP_POS_<name> arrays.
+# Per subcommand: long options (name|dest|kind|display), short aliases, positionals (name:nargs, nargs 1 | ? | +).
+# Abbreviated long options, --opt=value, -oVALUE, '--', positional blocks between options, -h exiting at once,
+# missing positionals (the subparser's error) and leftovers (the top parser's `unrecognized arguments`) as argparse.
+AP_EXTRAS=()
+_ap_specs() {
+    case $1 in
+        check)  AP_LONG=("--help|help|help|-h, --help" "--no-files|no_files|flag|--no-files" "--no-tools|no_tools|flag|--no-tools"
+                         "--json|json|flag|--json"); AP_SHORT=("-h|--help"); AP_POSSPEC=("config:1") ;;
+        config) AP_LONG=("--help|help|help|-h, --help" "--schema-doc|schema_doc|flag|--schema-doc" "--flat|flat|flag|--flat")
+                AP_SHORT=("-h|--help"); AP_POSSPEC=("config:?") ;;
+        stages) AP_LONG=("--help|help|help|-h, --help"); AP_SHORT=("-h|--help"); AP_POSSPEC=() ;;
+        run)    AP_LONG=("--help|help|help|-h, --help" "--from|from_stage|value|--from" "--to|to_stage|value|--to"
+                         "--only|only|value|--only" "--force|force|flag|--force" "--skip-tool-check|skip_tool_check|flag|--skip-tool-check"
+                         "--list-stages|list_stages|flag|--list-stages" "--plan|plan|flag|--plan")
+                AP_SHORT=("-h|--help"); AP_POSSPEC=("config:1") ;;
+        viewer) AP_LONG=("--help|help|help|-h, --help" "--out|out|value|--out" "--viewer-html|viewer_html|value|--viewer-html"
+                         "--no-flank-scan|no_flank_scan|flag|--no-flank-scan"); AP_SHORT=("-h|--help"); AP_POSSPEC=("run_dir:1") ;;
+        anchor) AP_LONG=("--help|help|help|-h, --help" "--check|check|flag|--check" "--out|out|value|-o/--out")
+                AP_SHORT=("-h|--help" "-o|--out"); AP_POSSPEC=("config:1" "fasta:+") ;;
+    esac
+}
+
+_ap_parse() {
+    local sub=$1; shift
+    local usage prog="satpipe $sub" a name val has_val i spec match nmatch matches dest kind disp ddash=0
+    local -a block=() AP_LONG=() AP_SHORT=() AP_POSSPEC=()
+    case $sub in check) usage=$_U_CHECK ;; config) usage=$_U_CONFIG ;; stages) usage=$_U_STAGES ;; run) usage=$_U_RUN ;;
+                 viewer) usage=$_U_VIEWER ;; anchor) usage=$_U_ANCHOR ;; esac
+    _ap_specs "$sub"
+    AP_PI=0                                    # next positional spec to fill
+    for spec in "${AP_LONG[@]}"; do IFS='|' read -r name dest kind disp <<< "$spec"; [ "$kind" = flag ] && printf -v "AP_$dest" 0; [ "$kind" = value ] && { printf -v "AP_$dest" ''; printf -v "AP_HAS_$dest" 0; }; done
+    for spec in "${AP_POSSPEC[@]}"; do eval "AP_POS_${spec%%:*}=()"; done
+    _ap_flush() {   # assign the current positional block
+        local k=0 n=${#block[@]} ps pname pn
+        while [ $k -lt $n ] && [ $AP_PI -lt ${#AP_POSSPEC[@]} ]; do
+            ps=${AP_POSSPEC[$AP_PI]}; pname=${ps%%:*}; pn=${ps#*:}
+            if [ "$pn" = + ]; then eval "AP_POS_$pname=(\"\${block[@]:$k}\")"; k=$n
+            else eval "AP_POS_$pname=(\"\${block[$k]}\")"; k=$((k + 1)); fi
+            AP_PI=$((AP_PI + 1))
+        done
+        while [ $k -lt $n ]; do AP_EXTRAS+=("${block[$k]}"); k=$((k + 1)); done
+        block=()
+    }
+    while [ $# -gt 0 ]; do
+        a=$1; shift
+        if [ $ddash = 1 ]; then block+=("$a"); continue; fi
+        if [ "$a" = -- ]; then ddash=1; continue; fi
+        case $a in
+            --?*)
+                name=${a%%=*}; has_val=0; val=""
+                case $a in *=*) has_val=1; val=${a#*=} ;; esac
+                match=""; nmatch=0; matches=""
+                for spec in "${AP_LONG[@]}"; do
+                    IFS='|' read -r i dest kind disp <<< "$spec"
+                    if [ "$i" = "$name" ]; then match=$spec; nmatch=1; matches=$i; break; fi
+                    case $i in "$name"*) match=$spec; nmatch=$((nmatch + 1)); matches+=${matches:+, }$i ;; esac
+                done
+                if [ $nmatch -gt 1 ]; then _usage_error "$usage" "$prog" "ambiguous option: $name could match $matches"; fi
+                if [ $nmatch = 0 ]; then _ap_flush; AP_EXTRAS+=("$a"); continue; fi
+                ;;
+            -?*)
+                if [[ $a =~ ^-[0-9]+$|^-[0-9]*\.[0-9]+$ ]]; then block+=("$a"); continue; fi   # negative numbers are positionals
+                match=""; has_val=0; val=""
+                for spec in "${AP_SHORT[@]}"; do
+                    if [ "${a:0:2}" = "${spec%%|*}" ]; then
+                        name=${spec#*|}
+                        for i in "${AP_LONG[@]}"; do [ "${i%%|*}" = "$name" ] && match=$i; done
+                    fi
+                done
+                if [ -z "$match" ]; then _ap_flush; AP_EXTRAS+=("$a"); continue; fi
+                if [ ${#a} -gt 2 ]; then has_val=1; val=${a:2}; fi
+                ;;
+            *) block+=("$a"); continue ;;
+        esac
+        _ap_flush
+        IFS='|' read -r i dest kind disp <<< "$match"
+        case $kind in
+            help) _help "$sub"; exit 0 ;;
+            flag) if [ $has_val = 1 ]; then _usage_error "$usage" "$prog" "argument $disp: ignored explicit argument '$val'"; fi
+                  printf -v "AP_$dest" 1 ;;
+            value) if [ $has_val = 0 ]; then
+                       if [ $# -eq 0 ] || { [[ $1 == -?* ]] && ! [[ $1 =~ ^-[0-9]+$|^-[0-9]*\.[0-9]+$ ]]; } || [ "$1" = -- ]; then
+                           _usage_error "$usage" "$prog" "argument $disp: expected one argument"
+                       fi
+                       val=$1; shift
+                   fi
+                   printf -v "AP_$dest" '%s' "$val"; printf -v "AP_HAS_$dest" 1 ;;
+        esac
+    done
+    _ap_flush
+    # required positionals still empty
+    local missing="" ps
+    for ((i = AP_PI; i < ${#AP_POSSPEC[@]}; i++)); do
+        ps=${AP_POSSPEC[$i]}; [ "${ps#*:}" = "?" ] && continue
+        missing+=${missing:+, }${ps%%:*}
+    done
+    [ -z "$missing" ] || _usage_error "$usage" "$prog" "the following arguments are required: $missing"
+    if [ ${#AP_EXTRAS[@]} -gt 0 ]; then _usage_error "$_U_TOP" satpipe "unrecognized arguments: ${AP_EXTRAS[*]}"; fi
+}
+
+# ------------------------------------------------------------------ subcommands
+cmd_check() {
+    _ap_parse check "$@"
+    . "$SATPIPE_LIB/check.sh"
+    check_main "${AP_POS_config[0]}" "$AP_no_files" "$AP_no_tools" "$AP_json"
+}
+
+cmd_config() {
+    _ap_parse config "$@"
+    . "$SATPIPE_LIB/config.sh"
+    local -a args=()
+    [ "$AP_schema_doc" = 1 ] && args+=(--schema-doc)
+    [ "$AP_flat" = 1 ] && args+=(--flat)
+    [ ${#AP_POS_config[@]} -gt 0 ] && args+=("${AP_POS_config[0]}")
+    config_main "${args[@]}"
+}
+
+cmd_stages() {   # cli.py:42-56 over stages_registry.tsv
+    _ap_parse stages "$@"
+    "$GAWK" -F '\t' 'BEGIN { printf "%-12s %-5s %-46s %s\n", "stage", "wired", "name", "scripts" }
+        /^#/ || $1 == "" { next }
+        { sub(/\r$/, "")
+          scripts = $7; gsub(/,/, ", ", scripts); if (scripts == "") scripts = "(command in docs/files.md)"
+          printf "%-12s %-5s %-46s %s\n", $1, ($3 == "True" ? "yes" : "no"), $2, scripts
+          notes = ""
+          if ($4 == "True") notes = "optional"
+          if ($5 != "") notes = notes (notes != "" ? "; " : "") "hand-curated input: " $5
+          if ($6 != "") { n = $6; gsub(/,/, ", ", n); notes = notes (notes != "" ? "; " : "") "needs " n }
+          if (notes != "") printf "%-12s %-5s %-46s [%s]\n", "", "", "", notes }' "$SATPIPE_LIB/stages_registry.tsv"
+}
+
+cmd_run() {      # cli.py:70-88
+    _ap_parse run "$@"
+    if [ "$AP_list_stages" = 1 ]; then
+        "$GAWK" -F '\t' '/^#/ || $1 == "" { next } { sub(/\r$/, ""); print $1 }' "$SATPIPE_LIB/run_stages.tsv"
+        return 0
+    fi
+    . "$SATPIPE_LIB/check.sh"
+    if [ -f "$SATPIPE_LIB/run.sh" ]; then
+        . "$SATPIPE_LIB/run.sh"
+        run_main "${AP_POS_config[0]}"                    # WP5: reads AP_from_stage, AP_to_stage, AP_only, AP_force, AP_skip_tool_check, AP_plan
+        return $?
+    fi
+    local skip=$AP_skip_tool_check
+    check_run "${AP_POS_config[0]}" 1 "$((1 - skip))"
+    if [ "$CHECK_FAILED" = 1 ]; then
+        check_render text >&2
+        printf 'satpipe run: refusing to start, fix the check failures above (or --skip-tool-check)\n' >&2
+        check_cleanup; return 1
+    fi
+    check_cleanup
+    printf 'satpipe run: stage execution is not ported yet (lib/satpipe/run.sh, WP5)\n' >&2
+    return 1
+}
+
+cmd_viewer() {
+    _ap_parse viewer "$@"
+    if [ -f "$SATPIPE_LIB/viewer.sh" ]; then . "$SATPIPE_LIB/viewer.sh"; viewer_main "${AP_POS_run_dir[0]}"; return $?; fi
+    printf 'satpipe viewer: not ported yet (lib/satpipe/viewer.sh, WP10)\n' >&2
+    return 1
+}
+
+cmd_anchor() {   # cli.py:91-125: run_check(files, no tools), then anchor_cli on the checked config
+    _ap_parse anchor "$@"
+    . "$SATPIPE_LIB/check.sh"
+    . "$SATPIPE_LIB/anchor.sh"
+    local rc=0
+    check_run "${AP_POS_config[0]}" 1 0
+    if [ "$CHECK_FAILED" = 1 ]; then check_render text >&2; check_cleanup; return 1; fi
+    local -a args=()
+    [ "$AP_check" = 1 ] && args+=(--check)
+    [ "$AP_HAS_out" = 1 ] && [ -n "$AP_out" ] && args+=(-o "$AP_out")
+    anchor_cli "$CFG_FLAT" "${args[@]}" -- "${AP_POS_fasta[@]}" || rc=$?
+    check_cleanup
+    return $rc
+}
+
+# ------------------------------------------------------------------ top-level parser
+main() {
+    local a cmd="" spec n m
+    local -a rest=()
+    while [ $# -gt 0 ]; do
+        a=$1; shift
+        case $a in
+            --) [ $# -gt 0 ] || break; cmd=$1; shift; break ;;
+            --?*)
+                n=${a%%=*}; m=""
+                for spec in --help --version; do case $spec in "$n"*) m+=${m:+ }$spec ;; esac; done
+                case $m in
+                    --help) _help top; exit 0 ;;
+                    --version) printf 'satpipe %s\n' "$SATPIPE_VERSION"; exit 0 ;;
+                    "--help --version") _usage_error "$_U_TOP" satpipe "ambiguous option: $n could match --help, --version" ;;
+                    *) AP_EXTRAS+=("$a") ;;
+                esac ;;
+            -h|-h*) _help top; exit 0 ;;
+            -?*) AP_EXTRAS+=("$a") ;;
+            *) cmd=$a; break ;;
+        esac
+    done
+    [ -n "$cmd" ] || _usage_error "$_U_TOP" satpipe "the following arguments are required: cmd"
+    case $cmd in
+        check|config|stages|run|viewer|anchor) "cmd_$cmd" "$@" ;;
+        *) _usage_error "$_U_TOP" satpipe "argument cmd: invalid choice: '$cmd' (choose from check, config, stages, run, viewer, anchor)" ;;
+    esac
+}
+
+main "$@"
+exit $?

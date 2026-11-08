@@ -1,0 +1,17 @@
+# tools.py:17-37 TOOLS (PORT_SPEC 4 tools probe). Columns: name, version_args (space-separated), version_re (Python, as
+# tools.py), version_ere (the same for gawk match(): \d -> [0-9], \w -> [A-Za-z0-9_]), required, stages, note, min_version (dot-joined).
+#name	version_args	version_re	version_ere	required	stages	note	min_version
+bash	--version	version (\d+\.\d+[\w.()-]*)	version ([0-9]+\.[0-9]+[A-Za-z0-9_.()-]*)	True	all	bash >= 4 (associative arrays)	4
+gawk	--version	GNU Awk (\d+\.\d+\.\d+)	GNU Awk ([0-9]+\.[0-9]+\.[0-9]+)	True	04, 10, 14	must be GNU awk: PROCINFO["sorted_in"], asorti, 3-argument match; mawk/busybox awk break Steps 4 and 10	4
+python3	--version	Python (\d+\.\d+\.\d+)	Python ([0-9]+\.[0-9]+\.[0-9]+)	True	driver, 14, orthology, subfamily	python >= 3.10	3.10
+trf	-v	Version (\d+\.\d+\.\d+[\w.-]*)	Version ([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9_.-]*)	True	02, 04, finalisation	exit status is not 0 on success in every build; scripts use `|| true`	
+vsearch	--version	vsearch v?(\d+\.\d+\.\d+)	vsearch v?([0-9]+\.[0-9]+\.[0-9]+)	True	06, 08		
+mafft	--version	v(\d+\.\d+)	v([0-9]+\.[0-9]+)	True	07		
+ssearch36	-h	version[: ]+(\d+\.\d+\.\d+\w*)	version[: ]+([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9_]*)	True	11, 13, orthology, subfamily, terminal	FASTA package (fasta3 / fasta36)	
+samtools	--version	samtools (\d+\.\d+[\w.]*)	samtools ([0-9]+\.[0-9]+[A-Za-z0-9_.]*)	True	11+		1.12
+bedtools	--version	bedtools v?(\d+\.\d+\.\d+)	bedtools v?([0-9]+\.[0-9]+\.[0-9]+)	True	11, 12, 13, 14, 15, 20		
+parallel	--version	GNU parallel (\d+)	GNU parallel ([0-9]+)	True	11, 13, finalisation	GNU parallel	
+cons	-version	EMBOSS:(\d+\.\d+\.\d+[\w.]*)	EMBOSS:([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9_.]*)	False	finalisation (consensus deliverable)	EMBOSS	
+water	-version	EMBOSS:(\d+\.\d+\.\d+[\w.]*)	EMBOSS:([0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9_.]*)	False	finalisation	EMBOSS	
+blastn	-version	blastn: (\d+\.\d+\.\d+\+?)	blastn: ([0-9]+\.[0-9]+\.[0-9]+\+?)	False	07 (IMO-TaqI comparison)	BLAST+	
+makeblastdb	-version	makeblastdb: (\d+\.\d+\.\d+\+?)	makeblastdb: ([0-9]+\.[0-9]+\.[0-9]+\+?)	False	07	BLAST+	
