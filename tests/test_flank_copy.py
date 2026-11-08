@@ -160,3 +160,15 @@ def test_cut_flank_contig_ends():
     loci = [(100, 500, 0)]
     assert FC.cut_flank('L', -2899, 100, 100, 500, 1000, loci, 0, 0) == (1, 100, 'end')
     assert FC.cut_flank('R', 501, 3500, 100, 500, 1000, loci, 0, 0) == (501, 1000, 'end')
+
+
+def test_joint_scores_needs_both_flanks_on_opposite_sides():
+    hl = {'X': {'L': 300}, 'Y': {'L': 280}, 'Z': {'R': 100}}
+    hr = {'X': {'R': 290}, 'Y': {'L': 300}, 'W': {'R': 400}}
+    # X: L->L 300 + R->R 290; Y: both flanks hit the same side -> no; Z, W: one flank only -> no
+    assert FC.joint_scores(hl, hr) == {'X': 590}
+
+
+def test_joint_scores_inverted_target():
+    # target in opposite orientation: our L flank matches its R flank and vice versa
+    assert FC.joint_scores({'X': {'R': 250}}, {'X': {'L': 260}}) == {'X': 510}

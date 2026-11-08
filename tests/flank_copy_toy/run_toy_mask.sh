@@ -15,9 +15,11 @@ ON="$TA --single-copy --clear-margin 0.9 --reciprocal --threads 2"
 C="--loci toy/locus_master.tsv --genomes toy/genomes.tsv --families toy/families.tsv"
 python3 "$S" $C --out rules $ON > rules.log
 python3 "$S" $C --out mask600 $ON --repeat-mask > mask600.log
+python3 "$S" $C --out joint $ON --repeat-mask --joint > joint.log
 python3 "$S" $C --out long $ON --repeat-mask --cut-at-locus --flank 3000 > long.log
+python3 "$S" $C --out ext $ON --repeat-mask --extend-steps 600,3000 > ext.log
 python3 "$S" $C --out long2 $ON --repeat-mask --cut-at-locus --flank 3000 > long2.log
-python3 "$HERE/check_toy_mask.py" toy/expected.json rules mask600 long
+python3 "$HERE/check_toy_mask.py" toy/expected.json rules mask600 joint long ext
 for f in ortho_pairs.tsv flank_class.tsv flank_copies.tsv flanks.json; do
   cmp -s long/$f long2/$f || { echo "FAIL determinism (long): $f differs"; exit 1; }
 done

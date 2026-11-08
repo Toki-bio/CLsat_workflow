@@ -10,6 +10,10 @@ Two genomes, one satellite family (150-letter unit x 20). Locus names = case + c
      by two flanks, no flank reaching into the other locus)
   I  each flank starts with 3 worn satellite units (12 % changed: the array continues past the catalogue edge),
      then unique sequence                                                  -> 600 letters: no pair; long: pair
+  J  L flank = repeat X, R flank = repeat Y (each with other copies, X also at K's L flank, Y at M's R flank);
+     the X+Y combination occurs only at J                       -> 600 + mask: no pair; + --joint: pair J
+  K, M  one flank X or Y, the other unique                                 -> pair in every mode
+  --extend-steps 600,3000: same pairs as 3,000 letters, but flanks resolved at 600 stay 600 letters
 Writes <out>/genomes/*.fa, genomes.tsv, families.tsv, cons.fa, locus_master.tsv, expected.json."""
 import json
 import os
@@ -42,6 +46,8 @@ FU = rnd(300)                      # F's unique part
 GX = [(rnd(1800), rnd(1800)) for _ in range(3)]
 HG = rnd(1000)
 IU = (rnd(2600), rnd(2600))
+XR, YR = rnd(600), rnd(600)
+JU, KU, MU = (rnd(2400), rnd(2400)), rnd(3000), rnd(3000)
 genome = {'spa': [], 'spb': []}
 loci = []
 
@@ -76,6 +82,12 @@ for g, r in (('spa', 0.0), ('spb', 0.05)):
     # I
     add(g, m(IU[0]) + ''.join(mut(UNIT, 0.12) for _ in range(3))); array(g, 'I' + t)
     add(g, ''.join(mut(UNIT, 0.12) for _ in range(3)) + m(IU[1])); add(g, rnd(5000))
+    # J, K, M
+    add(g, m(JU[0]) + mut(XR, 0.02)); array(g, 'J' + t); add(g, mut(YR, 0.02) + m(JU[1])); add(g, rnd(5000))
+    add(g, mut(XR, 0.02)); array(g, 'K' + t); add(g, m(KU)); add(g, rnd(5000))
+    add(g, m(MU)); array(g, 'M' + t); add(g, mut(YR, 0.02)); add(g, rnd(5000))
+    for _ in range(2):
+        add(g, mut(XR, 0.03)); add(g, rnd(3000)); add(g, mut(YR, 0.03)); add(g, rnd(3000))
     # other copies of the repeats
     for _ in range(5):
         add(g, mut(REP, 0.03)); add(g, rnd(3000))
@@ -102,9 +114,12 @@ def P(*c):
     return [[x + 'a', x + 'b'] for x in c]
 
 
-exp = {'rules': P('H1', 'H2'),
-       'mask600': P('F', 'H1', 'H2'),
-       'long': P('F', 'G1', 'G2', 'G3', 'H1', 'H2', 'I'),
+exp = {'rules': P('H1', 'H2', 'K', 'M'),
+       'mask600': P('F', 'H1', 'H2', 'K', 'M'),
+       'joint': P('F', 'H1', 'H2', 'J', 'K', 'M'),
+       'long': P('F', 'G1', 'G2', 'G3', 'H1', 'H2', 'I', 'J', 'K', 'M'),
+       'ext': P('F', 'G1', 'G2', 'G3', 'H1', 'H2', 'I', 'J', 'K', 'M'),
+       'ext_len': {'Fa|L': 600, 'Ka|R': 600, 'G1a|L': 3000, 'Ia|L': 3000},
        'loci': {x[0]: [x[2], x[3]] for x in loci}}
 json.dump(exp, open(os.path.join(out, 'expected.json'), 'w'), indent=1)
 print('toy written:', out, len(loci), 'loci')

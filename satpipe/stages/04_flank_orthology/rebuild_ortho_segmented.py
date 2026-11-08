@@ -74,6 +74,13 @@ ap.add_argument('--mask-min-aln', type=int, default=100, help='shortest repeated
 ap.add_argument('--cut-at-locus', action='store_true',
                 help='a flank ends before the next catalogue locus (and at the contig end) instead of being '
                      'rejected; kept if >= min-aln letters remain (for long --flank)')
+ap.add_argument('--extend-steps', default='',
+                help='comma list of window lengths, e.g. 600,3000,5000: a flank not resolved at one length is tried at '
+                     'the next (SINE_orth_loc adapt_flanks idea); needs --repeat-mask, implies --cut-at-locus')
+ap.add_argument('--joint', action='store_true',
+                help='second tier for loci left without a pair: both flanks of a locus must hit opposite flanks of the '
+                     'same target locus (summed bits, clear best, reciprocal), and that left+right combination must '
+                     'occur at no other locus of its own genome (SINE_orth_loc both_flanks idea)')
 a = ap.parse_args()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flank_copy as FC  # noqa: E402
@@ -98,6 +105,16 @@ MASK_MIN_ALN = a.mask_min_aln
 CUT = a.cut_at_locus
 if REPMASK and not SINGLE:
     sys.exit('--repeat-mask needs --single-copy')
+STEPS = [int(x) for x in a.extend_steps.split(',') if x.strip()] if a.extend_steps else [a.flank]
+if a.extend_steps:
+    if not REPMASK:
+        sys.exit('--extend-steps needs --repeat-mask')
+    if STEPS != sorted(set(STEPS)):
+        sys.exit('--extend-steps must increase: %s' % a.extend_steps)
+    CUT = True
+JOINT = a.joint
+if JOINT and (CLEAR_MARGIN <= 0 or not SINGLE):
+    sys.exit('--joint needs --single-copy and --clear-margin')
 
 OUT = a.out
 os.makedirs(OUT, exist_ok=True)
@@ -181,8 +198,25 @@ def classify(seq):
 flanks = {}          # (i, side) -> (sp, oriented_seq, (scf,fs,fe))
 fclass = {}
 flankseq = {}        # (i, side) -> raw genomic seq (for viewer flanks.json, not oriented)
-for i, (sp, scf, s, e, fam, lid, mono) in enumerate(loci):
-    for side in ('L', 'R'):
+sat_masked = {}      # letters masked as catalogue-family pieces (--repeat-mask)
+masked_bp = {}       # letters masked as tandem repeat (TRF)
+rep_masked = {}      # letters masked as pieces with another own-genome copy (--repeat-mask)
+pre_rep = {}         # flank after the tandem mask, before the repeat mask (--joint uses these)
+blocked = set()      # flanks a longer window cannot help: contig end, next locus
+flank_len = {}       # window length used per flank
+
+
+def prep(FLANK, keys):
+    """Steps 2-3c for the flanks `keys` at window length FLANK. Called once (published runs) or once per
+    --extend-steps length for the flanks not yet resolved. Only touches the given keys."""
+    def cur():
+        return [k for k in keys if k in flanks]
+    for k in keys:                      # a retried flank starts clean
+        for d in (flanks, flankseq, sat_masked, masked_bp, rep_masked, pre_rep):
+            d.pop(k, None)
+    for (i, side) in keys:
+        sp, scf, s, e, fam, lid, mono = loci[i]
+        flank_len[(i, side)] = FLANK
         if side == 'L':
             fs, fe = s - FLANK + 1, s
         else:
@@ -191,9 +225,10 @@ for i, (sp, scf, s, e, fam, lid, mono) in enumerate(loci):
             fs, fe, why = FC.cut_flank(side, fs, fe, s, e, SL[(sp, scf)], lidx[(sp, scf)], i, GUARD)
             if fe - fs + 1 < MIN_ALN:
                 fclass[(i, side)] = 'satellite' if why == 'locus' else 'truncated'
+                blocked.add((i, side))
                 continue
         if fs < 1 or fe > SL[(sp, scf)]:
-            fclass[(i, side)] = 'truncated'; continue
+            fclass[(i, side)] = 'truncated'; blocked.add((i, side)); continue
         if overlaps_other(sp, scf, fs, fe, i):
             fclass[(i, side)] = 'satellite'; continue
         seq = faidx(sp, scf, fs, fe)
@@ -205,125 +240,139 @@ for i, (sp, scf, s, e, fam, lid, mono) in enumerate(loci):
         flankseq[(i, side)] = (seq, fs, fe)
         if kl == 'unique':
             flanks[(i, side)] = (sp, oriented, (scf, fs, fe))
-cc = collections.Counter(fclass.values())
-print('flank classes: %s' % dict(cc), flush=True)
-print('unique anchor flanks (pre-residual-drop): %d' % len(flanks), flush=True)
+    cc = collections.Counter(fclass.values())
+    print('flank classes: %s' % dict(cc), flush=True)
+    print('unique anchor flanks (pre-residual-drop): %d' % len(flanks), flush=True)
 
-# residual-satellite drop
-with open(OUT + '/uflanks.fa', 'w') as f:
-    for (i, side), (sp, seq, g) in flanks.items():
-        f.write('>%d_%s\n%s\n' % (i, side, seq))
-o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
-                    OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
-sat_drop = set()
-for line in o.splitlines():
-    if line.startswith('#'):
-        continue
-    p = line.split('\t')
-    if len(p) >= 12:
-        try:
-            alen, pid = int(p[3]), float(p[2])
-        except ValueError:
+    # residual-satellite drop
+    with open(OUT + '/uflanks.fa', 'w') as f:
+        for (i, side), (sp, seq, g) in ((k, flanks[k]) for k in cur()):
+            f.write('>%d_%s\n%s\n' % (i, side, seq))
+    o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '1', '-d', '1',
+                        OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
+    sat_drop = set()
+    for line in o.splitlines():
+        if line.startswith('#'):
             continue
-        if alen >= 60 and pid >= 75:
-            sat_drop.add(p[0])
-sat_masked = {}
-if REPMASK:
-    # mask the catalogue-family pieces instead of dropping the flank; ssearch36 gives one alignment per query x
-    # family, so repeat until no piece is left (a flank can hold several separate pieces)
-    for rnd_ in range(30):
-        hit = collections.defaultdict(list)
-        for line in o.splitlines():
-            p = line.split('\t')
-            if line.startswith('#') or len(p) < 12:
-                continue
+        p = line.split('\t')
+        if len(p) >= 12:
             try:
-                alen, pid, qs, qe = int(p[3]), float(p[2]), int(p[6]), int(p[7])
+                alen, pid = int(p[3]), float(p[2])
             except ValueError:
                 continue
             if alen >= 60 and pid >= 75:
-                hit[p[0]].append((min(qs, qe), max(qs, qe)))
-        if not hit:
-            break
-        for k in list(flanks):
-            nm = '%d_%s' % k
-            if nm in hit:
-                sp, seq, g = flanks[k]
-                mseq, n = FC.mask(seq, 1, FC.merge(hit[nm]))
-                sat_masked[k] = sat_masked.get(k, 0) + n
-                flanks[k] = (sp, mseq, g)
-        with open(OUT + '/uflanks.fa', 'w') as f:
-            for (i, side), (sp, seq, g) in flanks.items():
-                f.write('>%d_%s\n%s\n' % (i, side, seq))
-        o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '4000', '-d', '1',
-                            OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
-    sat_drop = set('%d_%s' % k for k, v in flanks.items() if FC.unmasked(v[1]) < MIN_ALN)
-for k in list(flanks):
-    if '%d_%s' % (k[0], k[1]) in sat_drop:
-        del flanks[k]; fclass[k] = 'satellite'
-print('after residual-satellite %s: %d unique anchors' % ('mask' if REPMASK else 'drop', len(flanks)), flush=True)
+                sat_drop.add(p[0])
+    if REPMASK:
+        # mask the catalogue-family pieces instead of dropping the flank; ssearch36 gives one alignment per query x
+        # family, so repeat until no piece is left (a flank can hold several separate pieces)
+        for rnd_ in range(30):
+            hit = collections.defaultdict(list)
+            for line in o.splitlines():
+                p = line.split('\t')
+                if line.startswith('#') or len(p) < 12:
+                    continue
+                try:
+                    alen, pid, qs, qe = int(p[3]), float(p[2]), int(p[6]), int(p[7])
+                except ValueError:
+                    continue
+                if alen >= 60 and pid >= 75:
+                    hit[p[0]].append((min(qs, qe), max(qs, qe)))
+            if not hit:
+                break
+            for k in cur():
+                nm = '%d_%s' % k
+                if nm in hit:
+                    sp, seq, g = flanks[k]
+                    mseq, n = FC.mask(seq, 1, FC.merge(hit[nm]))
+                    sat_masked[k] = sat_masked.get(k, 0) + n
+                    flanks[k] = (sp, mseq, g)
+            with open(OUT + '/uflanks.fa', 'w') as f:
+                for (i, side), (sp, seq, g) in ((k, flanks[k]) for k in cur()):
+                    f.write('>%d_%s\n%s\n' % (i, side, seq))
+            o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '4000', '-d', '1',
+                                OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
+        sat_drop = set('%d_%s' % k for k, v in ((k, flanks[k]) for k in cur()) if FC.unmasked(v[1]) < MIN_ALN)
+    for k in cur():
+        if '%d_%s' % (k[0], k[1]) in sat_drop:
+            del flanks[k]; fclass[k] = 'satellite'
+    print('after residual-satellite %s: %d unique anchors' % ('mask' if REPMASK else 'drop', len(flanks)), flush=True)
 
-# ---- 3b. tandem mask from the run's genome-wide TRF calls (flank_copy.py rule 1) ----
-masked_bp = {}
-if TRF_DAT:
-    need = collections.defaultdict(set)
-    for (i, side), (sp, seq, (scf, fs, fe)) in flanks.items():
-        need[sp].add(scf)
-    TIV = {}
-    for sp, paths in TRF_DAT.items():
-        acc = collections.defaultdict(list)
-        for pth in paths:
-            for scf, iv in FC.parse_trf_dat(pth, need.get(sp, set())).items():
-                acc[scf].extend(iv)
-        TIV[sp] = {scf: FC.merge(iv) for scf, iv in acc.items()}
-    miss = sorted(sp for sp in need if sp not in TRF_DAT)
-    if miss:
-        sys.exit('--trf-dat given but no TRF calls for genome(s): %s' % ', '.join(miss))
-    for k in list(flanks):
-        sp, oseq, (scf, fs, fe) = flanks[k]
-        raw = flankseq[k][0]
-        mseq, n = FC.mask(raw, fs, TIV[sp].get(scf, []))
-        masked_bp[k] = n
-        omseq = FC.n_union(mseq if k[1] == 'R' else rc(mseq), oseq)   # keep the satellite mask (--repeat-mask)
-        if FC.unmasked(omseq) < MIN_ALN:
-            del flanks[k]; fclass[k] = 'tandem'; continue
-        flanks[k] = (sp, omseq, (scf, fs, fe))
-    print('after tandem mask: %d anchors (%d flanks mostly tandem repeat)'
-          % (len(flanks), sum(1 for v in fclass.values() if v == 'tandem')), flush=True)
+    # ---- 3b. tandem mask from the run's genome-wide TRF calls (flank_copy.py rule 1) ----
+    if TRF_DAT:
+        need = collections.defaultdict(set)
+        for (i, side), (sp, seq, (scf, fs, fe)) in ((k, flanks[k]) for k in cur()):
+            need[sp].add(scf)
+        TIV = {}
+        for sp, paths in TRF_DAT.items():
+            acc = collections.defaultdict(list)
+            for pth in paths:
+                for scf, iv in FC.parse_trf_dat(pth, need.get(sp, set())).items():
+                    acc[scf].extend(iv)
+            TIV[sp] = {scf: FC.merge(iv) for scf, iv in acc.items()}
+        miss = sorted(sp for sp in need if sp not in TRF_DAT)
+        if miss:
+            sys.exit('--trf-dat given but no TRF calls for genome(s): %s' % ', '.join(miss))
+        for k in cur():
+            sp, oseq, (scf, fs, fe) = flanks[k]
+            raw = flankseq[k][0]
+            mseq, n = FC.mask(raw, fs, TIV[sp].get(scf, []))
+            masked_bp[k] = n
+            omseq = FC.n_union(mseq if k[1] == 'R' else rc(mseq), oseq)   # keep the satellite mask (--repeat-mask)
+            if FC.unmasked(omseq) < MIN_ALN:
+                del flanks[k]; fclass[k] = 'tandem'; continue
+            flanks[k] = (sp, omseq, (scf, fs, fe))
+        print('after tandem mask: %d anchors (%d flanks mostly tandem repeat)'
+              % (len(flanks), sum(1 for v in fclass.values() if v == 'tandem')), flush=True)
 
-# ---- 3c. repeat mask: pieces with another copy in the own genome become N (--repeat-mask) ----
-rep_masked = {}
-if REPMASK:
-    MM = shutil.which('minimap2') or sys.exit('--repeat-mask needs minimap2 on PATH')
-    by_sp = collections.defaultdict(list)
-    for k, (sp, seq, g) in flanks.items():
-        by_sp[sp].append(k)
-    for sp in ASM:
-        ks = by_sp.get(sp)
-        if not ks:
-            continue
-        qfa = OUT + '/repmask_%s.fa' % sp
-        place = {}
-        with open(qfa, 'w') as f:
+    for k in cur():
+        pre_rep[k] = flanks[k][1]
+
+    # ---- 3c. repeat mask: pieces with another copy in the own genome become N (--repeat-mask) ----
+    if REPMASK:
+        MM = shutil.which('minimap2') or sys.exit('--repeat-mask needs minimap2 on PATH')
+        by_sp = collections.defaultdict(list)
+        for k, (sp, seq, g) in ((k, flanks[k]) for k in cur()):
+            by_sp[sp].append(k)
+        for sp in ASM:
+            ks = by_sp.get(sp)
+            if not ks:
+                continue
+            qfa = OUT + '/repmask_%s.fa' % sp
+            place = {}
+            with open(qfa, 'w') as f:
+                for k in ks:
+                    nm = '%d_%s' % k
+                    f.write('>%s\n%s\n' % (nm, flanks[k][1]))
+                    place[nm] = flanks[k][2]
+            r = subprocess.run([MM, '-k13', '-w4', '-s40', '-m25', '-A2', '-B4', '-O4,24', '-E2,1', '-c', '-N', '200', '-p', '0',
+                                '-t', str(THREADS), GEN[sp], qfa], capture_output=True, text=True)
+            if r.returncode:
+                sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
+            piv = FC.paf_other_pieces(r.stdout.splitlines(), place, COPY_MIN_PID, MASK_MIN_ALN)
             for k in ks:
                 nm = '%d_%s' % k
-                f.write('>%s\n%s\n' % (nm, flanks[k][1]))
-                place[nm] = flanks[k][2]
-        r = subprocess.run([MM, '-k13', '-w4', '-s40', '-m25', '-A2', '-B4', '-O4,24', '-E2,1', '-c', '-N', '200', '-p', '0',
-                            '-t', str(THREADS), GEN[sp], qfa], capture_output=True, text=True)
-        if r.returncode:
-            sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
-        piv = FC.paf_other_pieces(r.stdout.splitlines(), place, COPY_MIN_PID, MASK_MIN_ALN)
-        for k in ks:
-            nm = '%d_%s' % k
-            sp_, seq, g = flanks[k]
-            mseq, n = FC.mask(seq, 1, FC.merge(piv.get(nm, [])))
-            rep_masked[k] = n
-            if FC.unmasked(mseq) < MIN_ALN:
-                del flanks[k]; fclass[k] = 'repeated'; continue
-            flanks[k] = (sp_, mseq, g)
-    print('after repeat mask: %d anchors (%d flanks mostly repeated pieces)'
-          % (len(flanks), sum(1 for v in fclass.values() if v == 'repeated')), flush=True)
+                sp_, seq, g = flanks[k]
+                mseq, n = FC.mask(seq, 1, FC.merge(piv.get(nm, [])))
+                rep_masked[k] = n
+                if FC.unmasked(mseq) < MIN_ALN:
+                    del flanks[k]; fclass[k] = 'masked'; continue
+                flanks[k] = (sp_, mseq, g)
+        print('after repeat mask: %d anchors (%d flanks mostly repeated pieces)'
+              % (len(flanks), sum(1 for v in fclass.values() if v == 'masked')), flush=True)
+
+
+
+
+# one window length (published runs), or extend on demand (--extend-steps): a flank that is not resolved at one
+# length (mostly tandem / masked / satellite pieces / simple) is tried again at the next, longer length; a flank
+# stopped by the contig end or by the next locus is not (a longer window cannot help)
+RETRY = {'tandem', 'masked', 'satellite', 'lowcomplex', 'telomeric'}
+pending = [(i, side) for i in range(len(loci)) for side in ('L', 'R')]
+for n_, L_ in enumerate(STEPS):
+    if n_:
+        print('extend to %d letters: %d flanks' % (L_, len(pending)), flush=True)
+    prep(L_, pending)
+    pending = [k for k in pending if k not in flanks and k not in blocked and fclass.get(k) in RETRY]
 
 # ---- 4. cross-assembly orthology at three thresholds (for viewer 70/80/90) ----
 with open(OUT + '/uflanks.fa', 'w') as f:
@@ -455,6 +504,65 @@ else:
             pairs.add(key)
             detail[key] = (pid, alen, bits)
 
+# ---- 5. joint tier (--joint): both flanks of a locus placed together ----
+basis = {k: 'anchor' for k in pairs}
+if JOINT:
+    sp_of = {lid_of[i]: loci[i][0] for i in range(len(loci))}
+    jk = [k for k in sorted(pre_rep) if (k[0], 'L') in pre_rep and (k[0], 'R') in pre_rep]
+    with open(OUT + '/jflanks.fa', 'w') as f:
+        for k in jk:
+            f.write('>%d_%s\n%s\n' % (k[0], k[1], pre_rep[k]))
+    o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '4000', '-T', str(THREADS),
+                        OUT + '/jflanks.fa', OUT + '/jflanks.fa'], capture_output=True, text=True).stdout
+    cross = collections.defaultdict(lambda: collections.defaultdict(dict))   # (qi, qside) -> tlid -> tside -> bits
+    same = collections.defaultdict(lambda: collections.defaultdict(dict))
+    for line in o.splitlines():
+        p = line.split('\t')
+        if line.startswith('#') or len(p) < 12:
+            continue
+        try:
+            pid, alen, bits = float(p[2]), int(p[3]), float(p[11])
+        except ValueError:
+            continue
+        qi, qs_ = int(p[0].split('_')[0]), p[0].split('_')[1]
+        ti, ts_ = int(p[1].split('_')[0]), p[1].split('_')[1]
+        if qi == ti:
+            continue
+        if loci[qi][0] == loci[ti][0]:
+            if alen >= COPY_MIN_ALN and pid >= COPY_MIN_PID:
+                d = same[(qi, qs_)][ti]
+                d[ts_] = max(d.get(ts_, 0), bits)
+        elif alen >= MIN_ALN and pid >= MIN_PID:
+            d = cross[(qi, qs_)][lid_of[ti]]
+            d[ts_] = max(d.get(ts_, 0), bits)
+    paired_to = collections.defaultdict(set)          # locus -> genomes it already has a pair in
+    for x, y in pairs:
+        paired_to[x].add(sp_of[y]); paired_to[y].add(sp_of[x])
+    jdir = {}
+    for i in sorted(set(k[0] for k in jk)):
+        # the left+right combination must be unique among the loci of its own genome
+        if FC.joint_scores(same.get((i, 'L'), {}), same.get((i, 'R'), {})):
+            continue
+        hl, hr = cross.get((i, 'L'), {}), cross.get((i, 'R'), {})
+        sc = FC.joint_scores(hl, hr)
+        by_g = collections.defaultdict(list)
+        for t, b in sc.items():
+            by_g[sp_of[t]].append((b, t))
+        for g, hits in sorted(by_g.items()):
+            if g in paired_to[lid_of[i]]:
+                continue
+            b = FC.clear_best(hits, CLEAR_MARGIN)
+            if b is None or loci[i][0] in paired_to[b[1]]:
+                continue
+            jdir[(lid_of[i], b[1])] = b[0]
+    jkeep, _ = FC.reciprocal_pairs(set(jdir))
+    for key in sorted(jkeep):
+        pairs.add(key)
+        basis[key] = 'joint'
+        detail[key] = (0.0, 0, max(jdir.get(key, 0), jdir.get(key[::-1], 0)))
+    print('joint tier: %d loci with both flanks testable; %d pairs added' % (len(set(k[0] for k in jk)), len(jkeep)),
+          flush=True)
+
 # ---- matrix ----
 M = collections.Counter()
 lid2sp = {loci[i][5]: loci[i][0] for i in range(len(loci))}
@@ -513,10 +621,11 @@ json.dump(ortho_json, open(OUT + '/flank_orthologs.json', 'w'))
 
 # save the MIN_PID undirected pairs list
 with open(OUT + '/ortho_pairs.tsv', 'w') as f:
-    f.write('locusA\tlocusB\tspA\tspB\tpid\taln\tbits\n')
+    f.write('locusA\tlocusB\tspA\tspB\tpid\taln\tbits' + ('\tbasis' if JOINT else '') + '\n')
     for (x, y) in sorted(pairs):
         pid, alen, bits = detail[(x, y)]
-        f.write('%s\t%s\t%s\t%s\t%.1f\t%d\t%.1f\n' % (x, y, lid2sp[x], lid2sp[y], pid, alen, bits))
+        f.write('%s\t%s\t%s\t%s\t%.1f\t%d\t%.1f' % (x, y, lid2sp[x], lid2sp[y], pid, alen, bits)
+                + ('\t' + basis[(x, y)] if JOINT else '') + '\n')
 
 if TRF_DAT or SINGLE:
     # per anchor-candidate flank: tandem letters masked, other loci / other genome places hit, verdict

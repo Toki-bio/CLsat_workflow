@@ -181,3 +181,19 @@ def cut_flank(side, fs, fe, s, e, contig_len, loci_on_contig, self_i, guard):
         if fe > contig_len:
             fe, why = contig_len, why or 'end'
     return fs, fe, why
+
+
+def joint_scores(hl, hr):
+    """Joint placement of both flanks of one locus (--joint). hl / hr: {target_locus: {target_side: bits}} for the
+    left / right flank of the query locus. A target locus scores only if the two flanks hit DIFFERENT sides of it
+    (left with one flank, right with the other, any orientation); score = best such sum. Returns {target_locus: bits}."""
+    out = {}
+    for t in set(hl) & set(hr):
+        best = None
+        for xs, xb in hl[t].items():
+            for ys, yb in hr[t].items():
+                if xs != ys and (best is None or xb + yb > best):
+                    best = xb + yb
+        if best is not None:
+            out[t] = best
+    return out
