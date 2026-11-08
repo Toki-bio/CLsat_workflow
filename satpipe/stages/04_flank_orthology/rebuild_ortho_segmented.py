@@ -289,7 +289,7 @@ def prep(FLANK, keys):
             with open(OUT + '/uflanks.fa', 'w') as f:
                 for (i, side), (sp, seq, g) in ((k, flanks[k]) for k in cur()):
                     f.write('>%d_%s\n%s\n' % (i, side, seq))
-            o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '4000', '-d', '1',
+            o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '4000', '-d', '1', '-T', str(THREADS),
                                 OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
         sat_drop = set('%d_%s' % k for k, v in ((k, flanks[k]) for k in cur()) if FC.unmasked(v[1]) < MIN_ALN)
     for k in cur():
