@@ -102,3 +102,26 @@ def test_example_minimal_is_schema_valid():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     c = load_config(os.path.join(here, "configs", "example_minimal.yaml"))
     assert c.data["expansion"]["jobs"] == 16
+
+
+def test_hapdup_off_by_default(project):
+    d, cfg = project
+    x = load_config(str(cfg)).data
+    assert not (x.get("hapdup") or {}).get("pairs")          # the rule is off unless pairs are given
+
+
+def test_hapdup_pairs_validate(project):
+    d, cfg = project
+    cfg.write_text(cfg.read_text() + "\nhapdup:\n  pairs: [[spa, spa]]\n")
+    x = load_config(str(cfg)).data
+    assert x["hapdup"]["pairs"] == [["spa", "spa"]]
+    assert x["hapdup"]["min_ident"] == 0.99 and x["hapdup"]["min_qcov"] == 0.95
+    assert x["hapdup"]["edge_tol"] == 100 and x["hapdup"]["min_tovl"] == 0.5
+
+
+def test_hapdup_pair_needs_two_codes(project):
+    d, cfg = project
+    cfg.write_text(cfg.read_text() + "\nhapdup:\n  pairs: [[spa]]\n")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(cfg))
+    assert any("hapdup.pairs[0]" in m for m in e.value.errors)

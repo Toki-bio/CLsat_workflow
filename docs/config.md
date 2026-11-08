@@ -48,6 +48,11 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `arbitration.bin_min_bits` | float |  |  | BIN_MIN_BITS: a 1-kb bin counts as satellite when its best window reaches this many bits (used by the bin-majority family rule). Absolute scores depend on the monomer length and the scoring, so set it per satellite. Default: expansion.min_bits. |
 | `arbitration.max_gap_monomers` | int |  | `100` | MAX_GAP_MONO: a run of non-satellite 1-kb bins (best window under bin_min_bits) at least this long, in monomers x the longest family monomer, cuts a locus; the gap belongs to no locus. Shorter gaps stay inside the locus and are reported (gap_bins). 0 = never cut. Not in the published run (author's decision 2026-10-26: 100 monomers = 14.6 kb for CLsat). |
 | `arbitration.bin_share` | float |  | `0.75` | BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most 1-kb bins (bins whose best window reaches arbitration.bin_min_bits); the call is _AMBIGUOUS when that family holds less than this share of the bins. Not in the published run, which used the locus-wide maximum window (author's decision 2026-10-25). |
+| `hapdup.pairs` | list of list |  |  | Pairs of genome codes that are the two haplotype copies of one animal, e.g. [[unif, unim], [armf, armm]]. |
+| `hapdup.edge_tol` | int |  | `100` | bp at each contig end that the loci may leave uncovered and still count as array-only. |
+| `hapdup.min_qcov` | float |  | `0.95` | Minimum share of the array-only contig covered by the hit. |
+| `hapdup.min_ident` | float |  | `0.99` | Minimum gap-compressed identity (1 - minimap2 de) of the hit. |
+| `hapdup.min_tovl` | float |  | `0.5` | Minimum share of the partner stretch inside anchored partner loci. |
 | `orthology.flank_bp` | int |  | `600` | FLANK: flank length extracted outward from each array edge. |
 | `orthology.guard_bp` | int |  | `0` | GUARD: extra distance a flank must keep from another locus. |
 | `orthology.min_aln` | int |  | `200` | Minimum aligned length for an ortholog hit. |

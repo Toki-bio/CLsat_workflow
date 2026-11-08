@@ -178,6 +178,18 @@ plus the JSON builders that produce the viewer's data products.
 - `edge_refine/` — `refine_edges.py` nucleotide-level boundary refinement.
 - `rearbitration/` — re-runs arbitration on the finalized catalogue.
 - `subfamily_rerun/` — regenerates sub-subfamily calls on the corrected catalogue.
+- `hapdup/` — `hapdup_filter.sh`, the haplotype-duplicate rule (stage 16, config `hapdup.pairs`; off by
+  default, so the published catalogue is unchanged). In a trio-phased assembly (hifiasm trio binning) reads
+  without parent-specific k-mers go to both haplotypes, so a pure satellite array can be assembled twice: on a
+  contig anchored by flanks in its true haplotype, and as a floating array-only contig in the other. A contig
+  whose loci cover all of it (array-only, `edge_tol` 100 bp) is removed when it aligns (minimap2 asm5 -c) over
+  >= 95 % of its length at gap-compressed identity (1 - de) >= 0.99 to the partner haplotype, with >= 50 % of
+  the hit inside partner loci on contigs that are not array-only. Every array-only contig is listed with its
+  evidence in `regions/hapdup.tsv`; the input table is kept as `locus_master.prehapdup.tsv`.
+  Darevskia final panel (run_z3, 2026-11-08): 5 of 6 array-only *D. unisexualis* father-copy loci removed
+  (L34, L45, L46, L48, L49; CLsat1.2, 713 kb; full-length twins at identity 1.0000 inside mother-copy loci
+  L159.2 and L171; no D. unisexualis HiFi read maps to them at MAPQ >= 20); 0 of 75 *D. armeniaca* array-only
+  contigs removed (best twin covers <= 18 %). 555 -> 550 loci.
 
 ---
 

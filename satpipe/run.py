@@ -894,13 +894,28 @@ def st_regions(ctx: Ctx):
     cat = os.path.join(ctx.run, 'catalogue')
     ctx.sh(['bash', os.path.join(ctx.scripts, '05_subfamily_terminal_boundary/build_locus_master.sh'),
             os.path.join(cat, 'MASTER.merged.bed'), cat, reg, os.path.join(ctx.run, 'tables', 'families.tsv')], '16_regions')
+    hd = ctx.cfg.data.get('hapdup') or {}
+    if hd.get('pairs'):
+        # haplotype-duplicate rule: drop array-only contigs that are copies of an anchored array of the
+        # partner haplotype (hifiasm trio places reads without parent-specific k-mers in both haplotypes)
+        ctx.sh(['bash', os.path.join(ctx.scripts, '06_catalogue_finalize/hapdup/hapdup_filter.sh'),
+                os.path.join(reg, 'locus_master.tsv'), os.path.join(ctx.run, 'tables', 'genomes.tsv'), reg,
+                ','.join('%s:%s' % (a, b) for a, b in hd['pairs'])], '16_regions',
+               env=ctx.env(EDGE_TOL=hd.get('edge_tol', 100), MIN_QCOV=hd.get('min_qcov', 0.95),
+                           MIN_IDENT=hd.get('min_ident', 0.99), MIN_TOVL=hd.get('min_tovl', 0.5),
+                           THREADS=os.environ.get('SLURM_CPUS_PER_TASK', '8')))
+        removed = sum(1 for l in open(os.path.join(reg, "hapdup.tsv")) if l.split()[-1:] == ["REMOVED"])
+        ctx.manifest['hapdup_removed'] = removed
+        ctx.say('  hapdup: %d loci removed as haplotype duplicates (regions/hapdup.tsv)' % removed)
     ctx.sh(['bash', os.path.join(ctx.scripts, '06_catalogue_finalize/subfamily_rerun/run_extract.sh'), reg,
             os.path.join(ctx.run, 'tables', 'genomes.tsv')], '16_regions')
     return [os.path.join(reg, f) for f in ('locus_master.tsv', 'manifest.tsv', 'all_regions.fa')]
 
 
 st_regions.plan = lambda ctx: ([os.path.join(ctx.run, 'catalogue', f) for f in ('MASTER.merged.bed', 'MASTER.loci.segmented.bed', 'MASTER.final_assignment.tsv')]
-                               + _genome_files(ctx), {})
+                               + _genome_files(ctx),
+                               # hapdup enters the params only when it is on, so runs without it keep their DONE markers
+                               ({'hapdup': ctx.cfg.data['hapdup']} if (ctx.cfg.data.get('hapdup') or {}).get('pairs') else {}))
 
 
 @stage('17_terminal', needs=('ssearch36', 'samtools'))

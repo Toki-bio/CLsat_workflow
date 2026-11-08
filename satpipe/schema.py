@@ -144,6 +144,20 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
                            "that family holds less than this share of the bins. Not in the published run, which used "
                            "the locus-wide maximum window (author's decision 2026-10-25)."),
     }),
+    "hapdup": F("block", doc="Haplotype-duplicate rule at stage 16 (`hapdup_filter.sh`). Off unless `pairs` is given. "
+                "In a trio-phased assembly reads without parent-specific k-mers go to both haplotypes, so a pure "
+                "satellite array can be assembled twice. A contig whose catalogue loci cover all of it (array-only) is "
+                "removed when it aligns (minimap2 asm5) over min_qcov of its length at gap-compressed identity "
+                ">= min_ident to the partner haplotype, with >= min_tovl of the hit inside partner loci on contigs "
+                "that are not array-only. Every array-only contig and its verdict is listed in regions/hapdup.tsv.",
+                fields={
+        "pairs": F("list", item=F("list", item=F("str", pattern=CODE_PATTERN), length=2),
+                   doc="Pairs of genome codes that are the two haplotype copies of one animal, e.g. [[unif, unim], [armf, armm]]."),
+        "edge_tol": F("int", default=100, min=0, doc="bp at each contig end that the loci may leave uncovered and still count as array-only."),
+        "min_qcov": F("float", default=0.95, min=0, max=1, doc="Minimum share of the array-only contig covered by the hit."),
+        "min_ident": F("float", default=0.99, min=0, max=1, doc="Minimum gap-compressed identity (1 - minimap2 de) of the hit."),
+        "min_tovl": F("float", default=0.5, min=0, max=1, doc="Minimum share of the partner stretch inside anchored partner loci."),
+    }),
     "orthology": F("block", doc="Flank orthology (`rebuild_ortho_segmented.py`).", fields={
         "flank_bp": F("int", default=600, min=1, doc="FLANK: flank length extracted outward from each array edge."),
         "guard_bp": F("int", default=0, min=0, doc="GUARD: extra distance a flank must keep from another locus."),
