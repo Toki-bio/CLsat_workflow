@@ -4064,7 +4064,8 @@ function showFlanks(){
     }
     const left = (f.left != null) ? f.left : n;
     return `<div style="margin:2px 0;"><span style="color:#94a3b8;">${side} ${n.toLocaleString()} bp, ${f.class}`
-         + (f.mask ? `, ${left.toLocaleString()} letters used` : '') + `</span>`
+         + (f.mask ? (f.class === 'unique' ? `, ${left.toLocaleString()} letters used in the search`
+                                           : `, ${left.toLocaleString()} letters left after masking; not an anchor`) : '') + `</span>`
          + `<div style="width:100%; max-width:600px; background:#0f172a; line-height:0; white-space:nowrap; overflow:hidden; border-radius:2px;">${segs}</div></div>`;
   }
 
