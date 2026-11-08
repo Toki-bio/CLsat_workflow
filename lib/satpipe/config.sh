@@ -11,7 +11,7 @@
 #   cfg PATH                     Python str() of the node at PATH (slash path) in CFG_FLAT (leaf text, repr for containers)
 #   cfg_type PATH                type column of PATH
 #   cfg_keys PATH                child keys of PATH in config order
-#   cfg_subtree SRC DST          the rows of SRC re-rooted at DST (stdout)
+#   cfg_subtree SRC DST          the rows of SRC re-rooted at DST (stdout; appended to $PLAN_PARAMS when that is set)
 #   config_dump                  `satpipe config FILE` YAML of CFG_FLAT on stdout
 #   config_main ARGS...          cmd_config: [--schema-doc] [--flat] [FILE]; exit codes 0 / 1 (errors) / 2 (no FILE)
 
@@ -86,7 +86,9 @@ cfg() {
 }
 cfg_type()    { flat_type "$CFG_FLAT" "$1"; }
 cfg_keys()    { flat_keys "$CFG_FLAT" "$1"; }
-cfg_subtree() { flat_subtree "$CFG_FLAT" "$1" "$2"; }
+cfg_subtree() {   # while a stage plan runs (PLAN_PARAMS set, stages.sh) the rows are appended to the params
+    if [ -n "${PLAN_PARAMS:-}" ]; then flat_subtree "$CFG_FLAT" "$1" "$2" >> "$PLAN_PARAMS"; else flat_subtree "$CFG_FLAT" "$1" "$2"; fi
+}
 config_dump() { pyjson_gawk_file "$SATPIPE_LIB/yaml_dump.awk" "$CFG_FLAT"; }
 pyjson_gawk_file() { local f=$1; shift; "$GAWK" -f "$PYJSON" -f "$f" "$@"; }
 

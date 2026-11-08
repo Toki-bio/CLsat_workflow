@@ -46,6 +46,30 @@ class StageError(Exception):
     pass
 
 
+# test-only trace hook for the bash-port equivalence harness (PORT_SPEC 5b): SATPIPE_TRACE=<file> appends PLAN/CMD/OUT
+# records; SATPIPE_DRY=1 runs no command, never skips a stage and writes no DONE. Inactive unless the variables are set.
+_TRACE, _DRY = os.environ.get('SATPIPE_TRACE'), os.environ.get('SATPIPE_DRY') == '1'
+
+
+def _trace(*fields):
+    if _TRACE:
+        with open(_TRACE, 'a', encoding='utf-8', newline='\n') as t:
+            t.write('\t'.join(fields) + '\n')
+
+
+def _trace_cmd(stage, log_name, cwd, cmd, env) -> bool:
+    diff = sorted([k, v] for k, v in env.items() if os.environ.get(k) != v)
+    _trace('CMD', stage, log_name, cwd or '', json.dumps([str(c) for c in cmd]), json.dumps(diff))
+    return _DRY
+
+
+def _traced_run(stage, cmd, **kw):
+    """subprocess.run for the two direct calls (stage 09 ssearch36, stage 10 make_bed), traced; empty output when dry."""
+    if _trace_cmd(stage, '', None, cmd, kw.get('env') or dict(os.environ)):
+        return subprocess.CompletedProcess(cmd, 0, '', '')
+    return subprocess.run(cmd, **kw)
+
+
 # ----------------------------------------------------------------------------- helpers
 
 def fingerprint(path: str) -> str:
@@ -178,6 +202,8 @@ class Ctx:
         with open(logf, 'a') as lf:
             lf.write('\n### %s  %s\n$ %s\n' % (dt.datetime.now().isoformat(timespec='seconds'), cwd or '', ' '.join(map(str, cmd))))
             lf.flush()
+            if _trace_cmd(stage, log_name or stage, cwd, cmd, env or self.env()):
+                return
             r = subprocess.run([str(c) for c in cmd], cwd=cwd, env=env or self.env(), stdout=lf, stderr=subprocess.STDOUT)
         if r.returncode != 0:
             tail = ''.join(open(logf).readlines()[-15:])
@@ -195,7 +221,7 @@ class Ctx:
 
     def is_done(self, stage: str, inputs: list, params: dict) -> bool:
         p = self.done_path(stage)
-        if self.force or not os.path.isfile(p):
+        if self.force or _DRY or not os.path.isfile(p):
             return False
         try:
             rec = json.load(open(p))
@@ -209,7 +235,9 @@ class Ctx:
         return set(rec.get('inputs', {})) == set(inputs)
 
     def mark_done(self, stage: str, inputs: list, params: dict, outputs: list):
-        rec = {'stage': stage, 'finished': dt.datetime.now().isoformat(timespec='seconds'),
+        if _DRY:
+            return
+        rec ={'stage': stage, 'finished': dt.datetime.now().isoformat(timespec='seconds'),
                'params_hash': self.params_hash(params), 'params': params,
                'inputs': {f: fingerprint(f) for f in inputs},
                'outputs': {f: fingerprint(f) for f in outputs if os.path.isfile(f)}}
@@ -239,11 +267,13 @@ def stage(sid: str, needs: tuple = ()):
 def run_stage(fn, ctx: Ctx):
     sid = fn.sid
     inputs, params = fn.plan(ctx) if hasattr(fn, 'plan') else ([], {})
+    _trace('PLAN', sid, json.dumps(inputs), json.dumps(params, sort_keys=True), ctx.params_hash(params))
     if ctx.is_done(sid, inputs, params):
         ctx.say('[%s] up to date, skipped' % sid)
         return
     ctx.say('[%s] running' % sid)
     outputs = fn(ctx) or []
+    _trace('OUT', sid, json.dumps(outputs))
     ctx.mark_done(sid, inputs, params, outputs)
     ctx.say('[%s] done' % sid)
 
@@ -635,8 +665,8 @@ def st_assign(ctx: Ctx):
         for fam, fd in ctx.cfg.families.items():
             s = ''.join(l.strip() for l in open(fd['consensus']) if not l.startswith('>')).upper()
             f.write('>%s\n%s%s\n' % (fam, s, s))
-    r = subprocess.run([ctx.tool('ssearch36'), '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', '-d', '1', q, lib],
-                       capture_output=True, text=True, env=ctx.env())
+    r = _traced_run('09_assign', [ctx.tool('ssearch36'), '-n', '-z', '3', '-m', '8C', '-E', '1000', '-b', '1', '-d', '1', q, lib],
+                    capture_output=True, text=True, env=ctx.env())
     best = {}
     for line in r.stdout.splitlines():
         if line.startswith('#'):
@@ -699,8 +729,8 @@ def st_seeds(ctx: Ctx):
             shutil.copyfile(given[fam], bed)
         else:
             with open(bed, 'w') as f:
-                subprocess.run(['bash', os.path.join(ctx.scripts, '02_seed_expansion_scan/make_bed_from_clsats_headers.sh'),
-                                os.path.join(s, fam + '.members.fa')], stdout=f, env=ctx.env(), check=True)
+                _traced_run('10_seeds', ['bash', os.path.join(ctx.scripts, '02_seed_expansion_scan/make_bed_from_clsats_headers.sh'),
+                                             os.path.join(s, fam + '.members.fa')], stdout=f, env=ctx.env(), check=True)
         rec = os.path.join(ctx.run, 'large', fam + '.recovered.bed')
         if os.path.isfile(rec) and os.path.getsize(rec):
             with open(bed, 'a') as f, open(rec) as r:
