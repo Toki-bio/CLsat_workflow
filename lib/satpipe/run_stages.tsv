@@ -1,0 +1,23 @@
+#id	needs
+00_tables	
+02_trf	trf,parallel
+02b_large	trf,parallel,samtools
+03_motifs	gawk
+04_filter	trf,gawk
+05_rotate	
+06_cluster	vsearch
+07_mafft	mafft
+08_cross	vsearch
+09_assign	ssearch36
+10_seeds	gawk
+11_expand	ssearch36,samtools,bedtools,parallel
+12_master	bedtools
+13_rescan	ssearch36,samtools,bedtools,parallel
+14_arbitrate	bedtools,gawk,python3
+15_catalogue	ssearch36,samtools,bedtools,parallel
+16_regions	samtools
+17_terminal	ssearch36,samtools
+18_subfamily	ssearch36,samtools
+19_orthology	ssearch36,samtools
+20_candidates	ssearch36,samtools,bedtools
+21_anchor	

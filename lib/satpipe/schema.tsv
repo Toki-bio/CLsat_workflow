@@ -1,0 +1,98 @@
+#path	type	required	elem_type	default_type	default_json	default_str	default_repr	min	max	exclusive_min	pattern	pattern_ere	key_pattern	key_pattern_ere	choices	length	min_items	absent_origin	doc
+.	block	False		null	null	None	None											default	satpipe run configuration
+run_name	str	True		null	null	None	None				^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$						default	Name of the run; used in the manifest and in output file names.
+out_dir	path	True		null	null	None	None											default	Run directory. Every stage writes to <out_dir>/<stage>/.
+genomes	map	True	path	null	null	None	None						^[A-Za-z0-9_]+$	^[A-Za-z0-9_]+$			1	default	Species/assembly code -> genome FASTA. The code is used in every locus name (`code|scaffold:start-end`), so keep it short and free of `|`, `:` and `-`.
+genomes/<key>	path	False		null	null	None	None											default	
+inputs	block	False		null	null	None	None											default	Pre-computed inputs that let a run start after a stage.
+inputs/trf_dat	map	False	path	null	null	None	None						^[A-Za-z0-9_]+$	^[A-Za-z0-9_]+$				default	Code -> TRF `.dat` file for that genome. When given for every genome, stage 02 (TRF scan) is skipped. The published Darevskia run starts here.
+inputs/trf_dat/<key>	path	False		null	null	None	None											default	
+inputs/seeds	map	False	path	null	null	None	None						^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$				default	Family -> seed BED6 (0-based). When given for every family, stages 03-10 are skipped and the run starts at expansion (stage 11).
+inputs/seeds/<key>	path	False		null	null	None	None											default	
+families	map	True	block	null	null	None	None						^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$			1	default	One block per satellite family.
+families/<key>	block	False		null	null	None	None											default	
+families/<key>/consensus	path	True		null	null	None	None											default	Single-record FASTA with one monomer of the family consensus.
+families/<key>/mono	int	True		null	null	None	None	1										default	Monomer length in bp. Drives every window size (3xMONO walk, 2xMONO scan window, D3 widths, viewer step). Should equal the consensus length; `satpipe check` warns if it does not.
+families/<key>/colour	str	False		null	null	None	None				^#[0-9A-Fa-f]{6}$	^#[0-9A-Fa-f]{6}$						default	Display colour for the viewer (hex). Optional.
+references	block	False		null	null	None	None											default	Reference files that feed specific stages.
+references/rotated_consensus	path	False		null	null	None	None											default	Phase-rotated family consensuses prepended in Step 8 (`CLsat_cons.rot` in the Darevskia run). Prepending makes each reference win centroid election for its family. If absent the driver derives it by applying the Step-5 rotation to each `families.*.consensus` and records that deviation in the manifest.
+discovery	block	False		null	null	None	None											default	Stages 02-08: TRF scan, motif extraction, filtering, clustering.
+discovery/trf	str	False		str	"2 5 7 80 10 50 2000"	2 5 7 80 10 50 2000	'2 5 7 80 10 50 2000'				^\d+( \d+){6}$	^[0-9]+( [0-9]+){6}$						default	TRF parameters: match mismatch delta PM PI minscore maxperiod.
+discovery/period	list	False	int	list	[80, 300]	[80, 300]	[80, 300]									2		default	Motif period range [min, max] accepted by Step 3.
+discovery/period/<item>	int	False		null	null	None	None	1										default	
+discovery/min_copies	int	False		int	10	10	10	1										default	Minimum TRF copy number for a motif (Step 3).
+discovery/monomerize	bool	False		bool	true	True	True											default	Step 3b: replace a motif that is k tandem copies of a shorter unit (TRF reporting an array at a multiple of its unit, e.g. 292 for a 146-letter unit) by one unit. Test: the motif against itself rotated by len/k, banded global alignment, identity >= monomer_min_id; units never shorter than period[0]. Added 2026-10-18; the published run had no such step (set false to reproduce it exactly).
+discovery/monomer_min_id	float	False		float	0.7	0.7	0.7	0.0	1.0	True								default	Step 3b: minimum self-identity (motif vs itself rotated by one unit) to call a motif k units. Random and AT-rich random sequence of motif lengths stays far below (0 of 2 000 called in the 2026-10-18 test).
+discovery/simple_repeat_cov	int	False		int	50	50	50	0										default	Step 4: motifs whose own TRF re-scan covers more than this many bp are dropped as simple repeats.
+discovery/strand	enum	False		str	"plus"	plus	'plus'								['plus', 'both']			default	Step 5 canonical rotation and vsearch clustering strand. The published run is plus-only (deliberate; it is what left L541 unclustered).
+discovery/cluster_id	float	False		float	0.9	0.9	0.9	0.0	1.0	True								default	vsearch identity for per-species clustering (Step 6).
+discovery/cross_cluster_id	float	False		float	0.9	0.9	0.9	0.0	1.0	True								default	vsearch identity for cross-species clustering (Step 8).
+family_assignment	path	True		null	null	None	None											default	Curated TSV: `cluster<TAB>family[<TAB>note]`, cluster = vsearch cluster number from Step 8. Validated at stage 09: every listed cluster must exist, every family must have at least one cluster; unassigned clusters are reported with sizes and best-consensus bits for the curator.
+expansion	block	False		null	null	None	None											default	Stage 11: seed expansion (`clisat_expand_then_scan_merged.sh`).
+expansion/min_bits	float	False		int	50	50	50	0										default	--min-bits: minimum ssearch36 bits to accept a window.
+expansion/min_aln_frac	float	False		float	0.67	0.67	0.67	0.0	1.0									default	--min-aln-frac: fraction of the window (win_mono x MONO) that must align.
+expansion/step_mono	int	False		int	3	3	3	1										default	--step-monomers: dense-walk step, in monomers.
+expansion/win_mono	int	False		int	3	3	3	1										default	--win-monomers: probe window width, in monomers.
+expansion/query_repeat	int	False		int	2	2	2	1										default	--query-repeat N: the ssearch36 query is N+1 tandem copies of the consensus.
+expansion/probe_mono	int	False		int	100	100	100	1										default	--probe-monomers: coarse-probe initial step, in monomers.
+expansion/probe_min_step	int	False		int	50	50	50	1										default	--probe-min-step: coarse-probe minimum step, in monomers.
+expansion/max_steps	int	False		int	500	500	500	0										default	--max-steps: dense-walk cap per direction (0 = unlimited).
+expansion/to_scaffold_ends	bool	False		bool	false	False	False											default	--to-scaffold-ends.
+expansion/jobs	int	False		int	16	16	16	1										default	--jobs: GNU parallel workers.
+scan	block	False		null	null	None	None											default	Stage 13: symmetric rescan of MASTER loci with every family consensus.
+scan/win_mono	int	False		int	2	2	2	1										default	Scan window width in monomers (--scan-win-bp = win_mono x MONO).
+scan/step_mono	int	False		int	1	1	1	1										default	Scan step in monomers (--scan-step-bp = step_mono x MONO).
+scan/min_bits	float	False		int	0	0	0	0										default	--scan-min-bits: minimum bits to emit a scan row.
+arbitration	block	False		null	null	None	None											default	Stage 14: segmentation and family arbitration.
+arbitration/delta	float	False		int	20	20	20	0										default	DELTA: seed/rescan contradiction threshold (UNIQUE_SEED_CONTRADICTION at delta <= -DELTA).
+arbitration/delta_ambig	float	False		int	15	15	15	0										default	DELTA_AMBIG: ambiguity flag threshold.
+arbitration/seg_bin	int	False		int	1000	1000	1000	1										default	SEG_BIN: D3b bin width in bp.
+arbitration/seg_min_run	int	False		int	10	10	10	1										default	SEG_MIN_RUN: minimum run of bins to start a segment.
+arbitration/seg_min_locus	int	False		int	2000	2000	2000	1										default	SEG_MIN_LOCUS: segments shorter than this are handled per `short_segments`.
+arbitration/short_segments	enum	False		str	"drop"	drop	'drop'								['drop', 'merge']			default	SEG_SHORT: `drop` is the published behaviour; `merge` folds short segments into the longer neighbour.
+arbitration/bin_min_bits	float	False		null	null	None	None	0										default	BIN_MIN_BITS: a 1-kb bin counts as satellite when its best window reaches this many bits (used by the bin-majority family rule). Absolute scores depend on the monomer length and the scoring, so set it per satellite. Default: expansion.min_bits.
+arbitration/max_gap_monomers	int	False		int	100	100	100	0										default	MAX_GAP_MONO: a run of non-satellite 1-kb bins (best window under bin_min_bits) at least this long, in monomers x the longest family monomer, cuts a locus; the gap belongs to no locus. Shorter gaps stay inside the locus and are reported (gap_bins). 0 = never cut. Not in the published run (author's decision 2026-10-26: 100 monomers = 14.6 kb for CLsat).
+arbitration/bin_share	float	False		float	0.75	0.75	0.75	0	1									default	BIN_SHARE: segments, seed conflicts and unseeded loci take the family that wins most 1-kb bins (bins whose best window reaches arbitration.bin_min_bits); the call is _AMBIGUOUS when that family holds less than this share of the bins. Not in the published run, which used the locus-wide maximum window (author's decision 2026-10-25).
+hapdup	block	False		null	null	None	None											default	Haplotype-duplicate rule at stage 16 (`hapdup_filter.sh`). Off unless `pairs` is given. In a trio-phased assembly reads without parent-specific k-mers go to both haplotypes, so a pure satellite array can be assembled twice. A contig whose catalogue loci cover all of it (array-only) is removed when it aligns (minimap2 asm5) over min_qcov of its length at gap-compressed identity >= min_ident to the partner haplotype, with >= min_tovl of the hit inside partner loci on contigs that are not array-only. Every array-only contig and its verdict is listed in regions/hapdup.tsv.
+hapdup/pairs	list	False	list	null	null	None	None											default	Pairs of genome codes that are the two haplotype copies of one animal, e.g. [[unif, unim], [armf, armm]].
+hapdup/pairs/<item>	list	False	str	null	null	None	None									2		default	
+hapdup/pairs/<item>/<item>	str	False		null	null	None	None				^[A-Za-z0-9_]+$	^[A-Za-z0-9_]+$						default	
+hapdup/edge_tol	int	False		int	100	100	100	0										default	bp at each contig end that the loci may leave uncovered and still count as array-only.
+hapdup/min_qcov	float	False		float	0.95	0.95	0.95	0	1									default	Minimum share of the array-only contig covered by the hit.
+hapdup/min_ident	float	False		float	0.99	0.99	0.99	0	1									default	Minimum gap-compressed identity (1 - minimap2 de) of the hit.
+hapdup/min_tovl	float	False		float	0.5	0.5	0.5	0	1									default	Minimum share of the partner stretch inside anchored partner loci.
+orthology	block	False		null	null	None	None											default	Flank orthology (`rebuild_ortho_segmented.py`).
+orthology/flank_bp	int	False		int	600	600	600	1										default	FLANK: flank length extracted outward from each array edge.
+orthology/guard_bp	int	False		int	0	0	0	0										default	GUARD: extra distance a flank must keep from another locus.
+orthology/min_aln	int	False		int	200	200	200	1										default	Minimum aligned length for an ortholog hit.
+orthology/min_pid	float	False		float	80.0	80.0	80.0	0	100									default	Minimum percent identity for an ortholog hit.
+subfamily	block	False		null	null	None	None											default	Sub-subfamily assignment at array boundaries.
+subfamily/consensuses	path	False		null	null	None	None											default	Directory of per-sub-subfamily consensus FASTA files (`subx/` in the Darevskia run) or one multi-record FASTA. Optional: without it the stage is skipped.
+subfamily/members	map	False	list	null	null	None	None						^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$				default	Family -> list of its sub-subfamily names (the FAMSUBS table). Each family listed must exist in `families`.
+subfamily/members/<key>	list	False	str	null	null	None	None										1	default	
+subfamily/members/<key>/<item>	str	False		null	null	None	None				^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$						default	
+subfamily/confident_delta	float	False		int	10	10	10	0										default	Bits margin over the second-best sub-subfamily for a confident call.
+terminal	block	False		null	null	None	None											default	Terminal-monomer and boundary-phase measurement.
+terminal/window_mono	float	False		float	1.5	1.5	1.5	0		True								default	Window into the array from each terminus, in monomers.
+terminal/edge_tol	int	False		int	10	10	10	0										default	EDGE_TOL: tolerated gap between alignment and array edge, bp.
+finalisation	block	False		null	null	None	None											default	Optional finalisation stages (large-scaffold recovery, edge refinement, re-arbitration).
+finalisation/large_scaffold_bp	int	False		int	50000000	50000000	50000000	1										default	Scaffolds longer than this are TRF-scanned in overlapping chunks (the published run needed this for one 85.8 Mb unp scaffold).
+finalisation/chunk_bp	int	False		int	2000000	2000000	2000000	1										default	Chunk size for the chunked TRF scan.
+finalisation/overlap_bp	int	False		int	50000	50000	50000	0										default	Chunk overlap for the chunked TRF scan.
+finalisation/trf_timeout	int	False		int	1800	1800	1800	60										default	Seconds after which a chunk's TRF run is stopped and the chunk bisected (the published run's chunk 44 of the 85 Mb scaffold never finished: a telomeric tail).
+finalisation/min_piece_bp	int	False		int	20000	20000	20000	1000										default	Pieces shorter than this are no longer bisected; if TRF still times out on them they are listed in unscanned.tsv and left out (never imputed).
+finalisation/edge_tol	int	False		int	50	50	50	0										default	EDGE_TOL used by edge refinement.
+finalisation/rearbitrate	bool	False		bool	true	True	True											default	No effect (kept so old configs load): stage 14 always arbitrates the final catalogue; there is no separate re-arbitration pass.
+anchor	block	False		null	null	None	None											default	Anchor phasing (stage 21): every consensus the run writes is rotated into the frame of the anchor family, so figures, alignments and deposited FASTA share one start.
+anchor/family	str	False		null	null	None	None				^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$						derived	Family whose consensus defines the frame. Default: the first family under `families`.
+anchor/motif	str	False		str	""		''				^[ACGTacgt]*$	^[ACGTacgt]*$						default	Motif the anchor frame must start with (Darevskia CLsat: AAAGAAG). Empty: the anchor family's consensus is used exactly as given.
+anchor/independent	bool	False		bool	false	False	False											default	Families are unrelated (no common frame exists, e.g. different satellites of one genome): each family consensus is its own frame and only sub-subfamilies are rotated, onto their family. Default false: all families must be placeable on the anchor.
+anchor/max_motif_mismatch	int	False		int	1	1	1	0										default	Mismatches tolerated between the motif and the start of a rotated sequence (diverged families, e.g. CLsat4, may differ by one base).
+anchor/min_identity	float	False		float	0.6	0.6	0.6	0.0	1.0									default	Minimum identity of the local alignment to the anchor for a sequence to be placed; below it the stage fails instead of guessing a frame.
+manual_loci	path	False		null	null	None	None											default	Optional BED of hand-added loci (L541 in the Darevskia catalogue): chrom start end `<genome>|...` [score strand family]; col 4 must start with a genome code, col 7 (optional) names the family, else the best-scoring family is used. Entries are tagged MANUAL in provenance and listed in the manifest.
+tools	map	False	path	null	null	None	None						^[A-Za-z0-9_\-]+$	^[A-Za-z0-9_-]+$				default	Optional executable overrides: tool name -> path. The special key `bin_dir` is a directory searched before PATH for every tool.
+tools/<key>	path	False		null	null	None	None											default	
+viewer	block	False		null	null	None	None											default	Viewer configuration written by `satpipe viewer`.
+viewer/title	str	False		null	null	None	None											default	Page title.
+viewer/species_names	map	False	str	null	null	None	None						^[A-Za-z0-9_]+$	^[A-Za-z0-9_]+$				default	Code -> display name. Keys must exist in `genomes`.
+viewer/species_names/<key>	str	False		null	null	None	None											default	

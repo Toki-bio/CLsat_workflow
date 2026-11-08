@@ -1,0 +1,18 @@
+#id	name	wired	optional	hand	needs	scripts
+02	TRF scan	False	False		trf	
+03	motif extraction	False	False		gawk	01_discovery_clustering/Step3.sh
+04	simple-repeat filter	False	False		trf,gawk	01_discovery_clustering/Step4.sh
+05	canonical rotation	False	False			01_discovery_clustering/Step5.sh
+06	per-species clustering	False	False		vsearch	01_discovery_clustering/Step6.sh
+07	MAFFT rotation	False	False		mafft	01_discovery_clustering/Step7.sh
+08	cross-species clustering	False	False	references.rotated_consensus	vsearch	02_seed_expansion_scan/Step8_cross_cluster.sh
+09	family assignment	False	False	family_assignment (cluster -> family table from UPGMA tree inspection)		02_seed_expansion_scan/Step9_family_fasta.sh
+10	seed BEDs	False	False		gawk	02_seed_expansion_scan/make_bed_from_clsats_headers.sh
+11	expansion + scan	False	False		ssearch36,samtools,bedtools,parallel	02_seed_expansion_scan/clisat_expand_then_scan_merged.sh
+12	MASTER	False	False		bedtools	03_master_arbitration/build_master.sh
+13	symmetric rescan	False	False		ssearch36,samtools,bedtools,parallel	02_seed_expansion_scan/clisat_expand_then_scan_merged.sh
+14	segmentation + arbitration	False	False		gawk,bedtools,python3	03_master_arbitration/arbitration_patched.sh
+orthology	flank orthology	False	False		ssearch36,samtools,python3	04_flank_orthology/rebuild_ortho_segmented.py
+subfamily	sub-subfamily, terminal monomers, phase	False	True	subfamily.consensuses (subx/)	ssearch36,samtools	06_catalogue_finalize/subfamily_rerun/run_extract.sh,05_subfamily_terminal_boundary/assign_subfamily.sh,05_subfamily_terminal_boundary/terminal_monomers.sh,05_subfamily_terminal_boundary/boundary_phase.sh,05_subfamily_terminal_boundary/build_subfam_term_json.py
+finalisation	large-scaffold recovery, edge refinement, re-arbitration	False	True	manual_loci	trf,ssearch36,parallel	06_catalogue_finalize/85mb_recovery/run_chunked.sh,06_catalogue_finalize/edge_refine/run_refine_edges_parallel.sh,06_catalogue_finalize/rearbitration/arbitration_540.sh
+post	post-catalogue checks	False	True		ssearch36	07_post_catalogue/singleton_screen.sh,07_post_catalogue/candidate_scan.py,07_post_catalogue/make_fig2_from_data.py
