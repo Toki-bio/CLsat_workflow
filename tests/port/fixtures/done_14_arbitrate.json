@@ -1,0 +1,34 @@
+{
+ "stage": "14_arbitrate",
+ "finished": "2026-10-26T11:59:52",
+ "params_hash": "a6e3f7b1e6fc11ea",
+ "params": {
+  "arbitration": {
+   "delta": 20,
+   "delta_ambig": 15,
+   "seg_bin": 1000,
+   "seg_min_run": 10,
+   "seg_min_locus": 2000,
+   "short_segments": "drop",
+   "bin_min_bits": null,
+   "max_gap_monomers": 100,
+   "bin_share": 0.75
+  },
+  "scan_win_mono": 2,
+  "bin_min_bits": 50,
+  "rule": "bin-majority-v1"
+ },
+ "inputs": {
+  "/scratch/sk4386/satpipe_final/run_z3/rescan/arbitration_inputs.tsv": "sha256:7ba37e2b718e455fc03634a0d0dbf37540545de880cbe58105c7e24adaa0220c",
+  "/scratch/sk4386/satpipe_final/run_z3/master/MASTER.merged.bed": "sha256:637392120ffdd2af26dac733502691a4443bcb2d57ed3766298d7165ce52387f",
+  "/scratch/sk4386/satpipe_final/run_z3/rescan/MASTER_CLsat1.bits.tsv": "sha256:13ed233efc5ae0438e3b933d290711166db93ab0d476d5ece6189447f533a174",
+  "/scratch/sk4386/satpipe_final/run_z3/rescan/MASTER_CLsat2.bits.tsv": "sha256:204ce68039f9a62bb5b14bf7201915f61791187522218cdfe4341ba208e2192e",
+  "/scratch/sk4386/satpipe_final/run_z3/rescan/MASTER_CLsat3.bits.tsv": "sha256:bd77952f5e0acd51b6f9aecc5cb2b2a17743e4886e35f58faf3f04680824b9e4",
+  "/scratch/sk4386/satpipe_final/run_z3/rescan/MASTER_CLsat4.bits.tsv": "sha256:2f9155d0075d8b638efce8e8cbca34888da65e11a8bbf571267fddf911bb35a9"
+ },
+ "outputs": {
+  "/scratch/sk4386/satpipe_final/run_z3/arbitration/MASTER.loci.segmented.bed": "sha256:16759743a354ba2e1210e398f6b627fc3b68b54244176c785ae4b5734406916d",
+  "/scratch/sk4386/satpipe_final/run_z3/arbitration/MASTER.final_assignment.tsv": "sha256:5adbbb96de6f31a89bb68f1303cfa608c14d7ce8f06a793348f8aecc3e50c1e6",
+  "/scratch/sk4386/satpipe_final/run_z3/arbitration/MASTER.locus_bits.tsv": "sha256:1bdb520f21dee6798f6ac9da9fd641a8b7bbb999fac1ef4876a407d88c724a8f"
+ }
+}
