@@ -6,7 +6,7 @@
 # argument or env value changes a fingerprint) and pass every other call to the real interpreter. Each step runs both
 # drivers on the SAME run-directory path (states swapped in and out, as tests/port/test_driver.sh) and compares exit code,
 # stdout, stderr, the trace (PLAN/CMD/OUT), every file of the run directory (DONE and logs with timestamps masked) and
-# manifest.json. Variants: hapdup off/on, subfamily.consensuses multi-FASTA / directory / absent, seeds given for every
+# manifest.json. Variants: hapdup off/on, stage-19 option groups (flank-single-copy) on/off/partial and their errors, subfamily.consensuses multi-FASTA / directory / absent, seeds given for every
 # family (20_candidates skip), discovery folder missing (error), zero candidates, missing hapdup.tsv (FileNotFoundError),
 # dry mode, --plan.
 # Usage: tests/port/test_stages_wp8.sh WORKDIR    env: PYTHON (python3)   needs gawk, jq, bash >= 4 (servers, not Windows)
@@ -56,8 +56,8 @@ case \$name in
   assign_subfamily.sh) { w "\$name" "\$@"; for f in "\$2"/*; do echo "== \${f##*/}"; cat "\$f"; done; } > "\$1/locus_subfamily.tsv" ;;
   build_subfam_term_json.py) { w "\$name" "\$@"; cat "\$1/locus_subfamily.tsv"; } > "\$1/subfamily.json"; w "\$name" "\$@" > "\$1/terminal_monomers.json" ;;
   rebuild_ortho_segmented.py)
-    while [ \$# -gt 0 ]; do [ "\$1" = --out ] && o=\$2; shift; done
-    w "\$name" > "\$o/flanks.json"; w "\$name" > "\$o/flank_orthologs.json"
+    a="\$*"; while [ \$# -gt 0 ]; do [ "\$1" = --out ] && o=\$2; shift; done
+    w "\$name" > "\$o/flanks.json"; w "\$name" > "\$o/flank_orthologs.json"; printf '%s\n' "\$a" > "\$o/argv.txt"
     printf 'a\tb\nL1\tL2\nL3\tL4\r\nL5\tL6' > "\$o/ortho_pairs.tsv" ;;
   singleton_screen.sh)
     printf '# best\nspb|scf2:5-9\tCLsat1\t50.5\n\nspa|scf1:1-10\tCLsat2\t70\nspa|a:b:20-30\tCLsat1\t70.0\r\nspa|scf1:1-10\tCLsat2\t71\nshort\tx\n spb|z:1-2\tCLsat3\t99\n' > "\$3/sing_best.tsv"
@@ -89,7 +89,7 @@ families:
 family_assignment: ../ref/cluster_family.tsv
 expansion: {min_bits: 50.0}
 terminal: {window_mono: 2}
-orthology: {min_pid: 85, flank_bp: 700}
+orthology: {min_pid: 85, flank_bp: 700, tandem_mask: false, single_copy: false, repeat_mask: false, clear_margin: 0, extend_steps: []}
 subfamily:
   consensuses: ../ref/subs.fa
   members: {CLsat1: [CLsat1.1, CLsat1.2], CLsat2: [CLsat2.1]}
@@ -102,6 +102,15 @@ sed 's#^tools:#hapdup:\n  pairs: [[spa, spb]]\n  min_qcov: 0.9\ntools:#' "$C/run
 sed 's#consensuses: ../ref/subs.fa#consensuses: ../ref/subx#' "$C/run.yaml" > "$C/subxdir.yaml"
 "$GAWK" '/^subfamily:/ { skip = 1; next } skip && /^  / { next } { skip = 0; print }' "$C/run.yaml" > "$C/nosub.yaml"
 sed 's#consensuses: ../ref/subs.fa#consensuses: ../ref/subs.fa\n  members: {}#; /members: {CLsat1/d' "$C/run.yaml" > "$C/nomembers.yaml"
+# stage 19 (branch flank-single-copy, WP13): option groups and their errors
+o19() { sed "s#^orthology: .*#orthology: {min_pid: 85, flank_bp: 700, $2}#" "$C/run.yaml" > "$C/$1.yaml"; }
+sed 's#^orthology: .*#orthology: {min_pid: 85, flank_bp: 700}#' "$C/run.yaml" > "$C/o19_defaults.yaml"
+o19 o19_noext    "extend_steps: []"
+o19 o19_steps    "extend_steps: [700, 2500, 12000], mask_min_aln: 150, copy_min_pid: 92.5, copy_min_aln: 300"
+o19 o19_cmonly   "tandem_mask: false, single_copy: false, repeat_mask: false, extend_steps: [], clear_margin: 0.75, reciprocal: false"
+o19 o19_sconly   "tandem_mask: false, repeat_mask: false, extend_steps: [], clear_margin: 0"
+o19 o19_bad_rm   "single_copy: false"
+o19 o19_bad_ext  "repeat_mask: false"
 cp "$C/run.yaml" "$C/seeds.yaml"
 printf 'inputs:\n  seeds: {CLsat1: ../seeds/CLsat1.bed, CLsat2: ../seeds/CLsat2.bed, CLsat3: ../seeds/CLsat3.bed, CLsat4: ../seeds/CLsat4.bed}\n' >> "$C/seeds.yaml"
 cp "$C/run.yaml" "$C/someseeds.yaml"
@@ -211,5 +220,31 @@ for s in py sh; do rm -rf "$W/state_$s/motifs"; done
 step seeds_given -- $R proj/configs/seeds.yaml
 step seeds_some  -- $R proj/configs/someseeds.yaml --force --only 20_candidates
 step no_seeds    -- $R proj/configs/run.yaml --force --only 20_candidates
+# stage 19 option groups: TRF calls of both genomes (trf/<code>.dat + chunked large-scaffold scans, a name with a space)
+R19="run --skip-tool-check --force --only 19_orthology"
+for s in py sh; do
+    mkdir -p "$W/state_$s/trf" "$W/state_$s/large/spa/scf b" "$W/state_$s/large/spa/scfA" "$W/state_$s/large/spb/x1"
+    printf 'trf spa
+' > "$W/state_$s/trf/spa.dat"; printf 'trf spb
+' > "$W/state_$s/trf/spb.dat"
+    printf 'big b
+' > "$W/state_$s/large/spa/scf b/scaf.trf.dedup.dat"; printf 'big A
+' > "$W/state_$s/large/spa/scfA/scaf.trf.dedup.dat"
+    printf 'big x1
+' > "$W/state_$s/large/spb/x1/scaf.trf.dedup.dat"
+done
+step o19_defaults SLURM_CPUS_PER_TASK=2 -- $R19 proj/configs/o19_defaults.yaml
+step o19_rerun    -- run --skip-tool-check --only 19_orthology proj/configs/o19_defaults.yaml
+step o19_noext    -- $R19 proj/configs/o19_noext.yaml
+step o19_steps    -- $R19 proj/configs/o19_steps.yaml
+step o19_cmonly   -- $R19 proj/configs/o19_cmonly.yaml
+step o19_sconly   -- $R19 proj/configs/o19_sconly.yaml
+step o19_bad_rm   -- $R19 proj/configs/o19_bad_rm.yaml
+step o19_bad_ext  -- $R19 proj/configs/o19_bad_ext.yaml
+for s in py sh; do rm -f "$W/state_$s/large/spa/scfA/scaf.trf.dedup.dat"; done
+step o19_trf_changed -- run --skip-tool-check --only 19_orthology proj/configs/o19_defaults.yaml
+for s in py sh; do rm -rf "$W/state_$s/trf/spb.dat" "$W/state_$s/large/spb"; done
+step o19_no_trf   -- $R19 proj/configs/o19_defaults.yaml
+step o19_off_ok   -- $R19 proj/configs/run.yaml
 echo "passed $NPASS, failed $NFAIL"
 [ $NFAIL = 0 ]

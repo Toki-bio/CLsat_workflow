@@ -238,6 +238,10 @@ function vw_float(id,   t, v) {
 # '%g' % x and '%d' % x of config numbers
 function vw_fmt_g(id,   v) { v = JV[id]; if (JT[id] == "float" && v ~ /nan|inf/) return v; return sprintf("%g", vw_float(id)) }
 function vw_fmt_d(id) { return vw_int(id) }
+# vw_thou(n): '{:,}'.format(int)
+function vw_thou(n,   neg, s, r) { s = n ""; neg = (substr(s, 1, 1) == "-"); if (neg) s = substr(s, 2)
+    r = ""; while (length(s) > 3) { r = "," substr(s, length(s) - 2) r; s = substr(s, 1, length(s) - 3) }
+    return (neg ? "-" : "") s r }
 
 # ---------------------------------------------------------------- config (TYPED flat from the manifest)
 
@@ -482,7 +486,8 @@ function vw_fasta_seq(p,   L, n, i, name, k, w, order, seq, out, s, nn) {
 
 # config: step 8 (viewer.py:205-261) -> viewer_config.json; prints "n_cat n_cand n_ortho n_flag" for the closing line
 function phase_config(   out, fams, i, fam, fd, c, f, view, labels, t, sbk, cdir, mem, j, m, mlist, p, seq, half, h, o, n_cat, n_cand,
-                          n_flag, n_contra, n_with, lists, notes, cnt, LO, LF, LU, best, bestv, x, sl, cand_txt, delta, dambig, mp, ma) {
+                          n_flag, n_contra, n_with, lists, notes, cnt, LO, LF, LU, best, bestv, x, sl, cand_txt, delta, dambig, mp, ma,
+                          decided, nst, st, stx, rule, _np) {
     vw_load_cfg()
     out = ENVIRON["VW_OUT"]
     read_master(out "/MASTER.merged.bed")
@@ -541,6 +546,10 @@ function phase_config(   out, fams, i, fam, fd, c, f, view, labels, t, sbk, cdir
     o = vj_req("C", "orthology")
     c = jt_set("V", "orthology", "map", "")
     vj_cp(vj_req(o, "min_pid"), c, "min_pid"); vj_cp(vj_req(o, "min_aln"), c, "min_aln"); vj_cp(vj_req(o, "flank_bp"), c, "flank_bp")
+    decided = (vw_float(vj_req(o, "clear_margin")) > 0)          # stage 19 chose pairs (clear best, reciprocal)
+    jt_set(c, "decided_pairs", "bool", decided ? "True" : "False")
+    if (decided) jt_set(c, "n_pairs", "int", vw_lines(out "/ortho_pairs.tsv", _np) - 1); else jt_set(c, "n_pairs", "null", "None")
+    VL_PAIRS = decided ? out "/ortho_pairs.tsv" : ""
     # counts and lists keep their dict positions; the lists are built in place, the counts filled from them afterwards
     cnt = jt_set("V", "counts", "map", "")
     lists = jt_set("V", "lists", "map", "")
@@ -561,11 +570,22 @@ function phase_config(   out, fams, i, fam, fd, c, f, view, labels, t, sbk, cdir
     x = vj_req("C", "arbitration"); delta = vw_fmt_g(vj_req(x, "delta")); dambig = vw_fmt_g(vj_req(x, "delta_ambig"))
     cand_txt = n_cand ? ", plus the " n_cand " uncatalogued candidates (not catalogue members)" : ""
     notes = jt_set("V", "notes", "map", "")
-    jt_set(notes, "ortho", "str", "Positional orthology from unique flanking sequence (>=" mp "% identity, >=" ma " bp), single best hit per target " \
-        "assembly. \"Orthologous to\" lists distinct partner assemblies then the total partner-locus count.")
+    if (decided) {
+        nst = 0
+        if (vj_truthy(vj_req(o, "repeat_mask")) && vj_truthy(x = vj_req(o, "extend_steps")))
+            for (i = 0; i < JN[x]; i++) st[++nst] = vw_thou(vw_int(x SUBSEP i))
+        else st[++nst] = vw_thou(vw_int(vj_req(o, "flank_bp")))
+        stx = st[1]; for (i = 2; i <= nst; i++) stx = stx " / " st[i]
+        rule = "Positional orthology from flanking sequence: flanks of " stx " letters"             (nst > 1 ? " (a longer flank only where the shorter one was unresolved; never past the middle of the gap to the next locus)" : "")             "; " (vj_truthy(vj_req(o, "tandem_mask")) ? "tandem-repeat letters (TRF) masked; " : "")             (vj_truthy(vj_req(o, "repeat_mask")) ? "satellite pieces and pieces >=" vw_fmt_d(vj_req(o, "mask_min_aln"))                 " letters with another copy in the own genome masked (N); " : "")             "every anchor flank single copy in its own genome (>=" vw_fmt_g(vj_req(o, "copy_min_pid")) "% identity); a pair = clear "             "best hit in the target assembly (second < " vw_fmt_g(vj_req(o, "clear_margin")) " x best bits)"             (vj_truthy(vj_req(o, "reciprocal")) ? ", both ways" : "") ", >=" mp "% identity over >=" ma " letters."
+        jt_set(notes, "ortho", "str", rule " \"Orthologous to\" lists these pairs only: distinct partner assemblies, then partner loci.")
+    } else
+    jt_set(notes, "ortho", "str", "Positional orthology from unique flanking sequence (>=" mp "% identity, >=" ma " bp), single best hit per target "         "assembly. \"Orthologous to\" lists distinct partner assemblies then the total partner-locus count.")
     jt_set(notes, "flag", "str", n_flag " catalogue loci annotated by arbitration" cand_txt ". Only " n_contra " " (n_contra == 1 ? "is" : "are") \
         " a seed/rescan contradiction (the rescan scored another family >=" delta " bits above the seed; the seed family is retained). " \
         "The rest are close-margin calls (segment or seed-conflict resolved with a margin below " dambig " bits) or loci without a seed.")
+    if (decided)
+    jt_set(notes, "full", "str", "Every locus (" n_cat ", all " NCODE " assemblies) with its sub-subfamily call and both flanks' class. Ortholog = "         "a decided pair (rule in the Orthologous loci tab); the L/R partner columns show the best raw hit of each flank as evidence.")
+    else
     jt_set(notes, "full", "str", "Every locus (" n_cat ", all " NCODE " assemblies) with its sub-subfamily call and both flanks' cross-assembly orthology " \
         "status (ssearch36, >=" mp "% identity, >=" ma " bp, single best hit per target assembly). L/R badges show each flank's class.")
     vj_write("V", out "/viewer_config.json")

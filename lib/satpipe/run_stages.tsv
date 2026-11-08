@@ -18,6 +18,6 @@
 16_regions	samtools
 17_terminal	ssearch36,samtools
 18_subfamily	ssearch36,samtools
-19_orthology	ssearch36,samtools
+19_orthology	ssearch36,samtools,minimap2
 20_candidates	ssearch36,samtools,bedtools
 21_anchor	

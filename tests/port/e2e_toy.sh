@@ -12,7 +12,8 @@
 # afterwards), derived as tests/toy/run_driver_toy.sh does; `seeds` also takes seeds/*.bed of a prep run to 10_seeds.
 # Variants: default | manual (manual_loci BED: two planted arrays re-entered, one with family in col 7) | seeds (inputs.seeds
 #   for every family: stages 03-10 skipped) | hapdup (third genome spa2 = spa renamed + 3 array-only contigs cut from
-#   planted spa arrays; hapdup.pairs [[spa, spa2]]) | samenames (make_toy.py --same-names).
+#   planted spa arrays; hapdup.pairs [[spa, spa2]]) | samenames (make_toy.py --same-names) | orthoff (stage 19 as published: no
+#   tandem/repeat mask, no single-copy test, no clear-best rule; the viewer lists raw hits). default = the flank-single-copy rules on.
 # Usage: tests/port/e2e_toy.sh WORKDIR VARIANT     env: PYTHON (python3 with PyYAML), JOBS (8), SIZE (1200000)
 # Needs the stage tools on PATH (trf parallel vsearch mafft ssearch36 samtools bedtools minimap2 gawk jq); servers only.
 set -uo pipefail
@@ -109,6 +110,7 @@ case $V in
         cat "$W/manual.bed"
         EXTRA=("manual_loci: $W/manual.bed") ;;
     hapdup) EXTRA=("hapdup: {pairs: [[spa, spa2]]}") ;;
+    orthoff) EXTRA=("orthology: {tandem_mask: false, single_copy: false, repeat_mask: false, clear_margin: 0, extend_steps: []}") ;;
 esac
 rm -rf -- "$W/prep"
 mkcfg "$RUN" "${EXTRA[@]}" > "$W/run.yaml"

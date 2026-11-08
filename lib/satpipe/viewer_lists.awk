@@ -5,7 +5,8 @@
 #   read_master(path)    viewer_lists.py:16-28   M_N; M_ID[i] M_SP[i] (catalogue order); SP_OF[lid] (last row wins)
 #   read_assign(path)    viewer_lists.py:31-39   A_FAM[lid] A_BITS A_OTHER A_OB A_DELTA A_FLAG (last row wins)
 #   build_lists(LO, LF, LU)   viewer_lists.py:54-142 into three existing empty list nodes; reads the trees
-#                        "F" (flanks.json), "O" (flank_orthologs.json), "S" (subfamily.json or {})
+#                        "F" (flanks.json), "O" (flank_orthologs.json), "S" (subfamily.json or {}); VL_PAIRS = path of the
+#                        decided ortho_pairs.tsv (pairs=read_pairs(..)) or "" (pairs=None, the published viewer)
 # The threshold key is '80' (build_lists default; viewer.py:208 passes none).
 
 function read_master(path,   L, n, i, k, p, parts, np, cnt) {
@@ -67,7 +68,8 @@ function _vl_pair(a, b) { return ((a "") < (b "")) ? a SUBSEP b : b SUBSEP a }
 function _vl_add_partner(a, b) { if (!((a, b) in PSET)) { PSET[a, b] = 1; PL[a, ++PN[a]] = b } }
 
 function build_lists(LO, LF, LU,   FLAGGED, key, mask, tab, q, i, hl, j, h, t, lid, sp, fam, r, fl, x, lfc, rfc, lfcid, rfcid,
-                     sf, sbn, side, sid, b, n, judged, nj, all, k, both, nuf, bysp, spk, sps, nsp, lst, lst2, s, pl, cnt, fg, nfg, prow, fln) {
+                     sf, sbn, side, sid, b, n, judged, nj, all, k, both, nuf, bysp, spk, sps, nsp, lst, lst2, s, pl, cnt, fg, nfg, prow, fln,
+                     PLN, npl, pf) {
     split("UNIQUE_SEED_CONTRADICTION SEED_CONFLICT_RESOLVED_AMBIGUOUS SEGMENT_RESOLVED_AMBIGUOUS NO_SEED_RESOLVED NO_SEED_AMBIGUOUS CANDIDATE_UNCATALOGUED", fln, " ")
     for (i in fln) FLAGGED[fln[i]] = 1
     # LF / RF hit tables at the threshold
@@ -85,6 +87,16 @@ function build_lists(LO, LF, LU,   FLAGGED, key, mask, tab, q, i, hl, j, h, t, l
                 _vl_add_partner(q, t); _vl_add_partner(t, q)
                 k = _vl_pair(q, t); SIDES[k] = or(SIDES[k] + 0, mask)
             }
+        }
+    }
+    # decided pairs (viewer_lists.py read_pairs; VL_PAIRS = path of ortho_pairs.tsv when stage 19 decided them): a locus's
+    # partners are exactly these pairs; the hit tables above stay as evidence (lfp/rfp columns, both-sided sides)
+    if (VL_PAIRS != "") {
+        delete PSET; delete PN; delete PL
+        npl = vw_lines(VL_PAIRS, PLN)
+        for (i = 1; i <= npl; i++) {
+            if (split(PLN[i], pf, "	") < 2 || pf[1] == "locusA") continue
+            _vl_add_partner(pf[1], pf[2]); _vl_add_partner(pf[2], pf[1])
         }
     }
     nfg = 0
@@ -126,7 +138,7 @@ function build_lists(LO, LF, LU,   FLAGGED, key, mask, tab, q, i, hl, j, h, t, l
         if (n > 0) {
             jt_set(r, "ortho", "bool", "True")
             nj = 0; delete judged
-            for (k = 1; k <= 2; k++) { x = vj_get(r, (k == 1) ? "lfp" : "rfp"); if (x != "") judged[++nj] = py_str(x) }
+            if (VL_PAIRS == "") for (k = 1; k <= 2; k++) { x = vj_get(r, (k == 1) ? "lfp" : "rfp"); if (x != "") judged[++nj] = py_str(x) }
             if (nj == 0) for (k = 1; k <= n; k++) judged[++nj] = PL[lid, k]
             all = 1
             for (k = 1; k <= nj; k++) if (!((judged[k]) in A_FAM) || A_FAM[judged[k]] != fam) { all = 0; break }

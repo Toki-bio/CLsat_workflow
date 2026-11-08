@@ -121,6 +121,10 @@ viewer_main() {
     # 6. JSON products
     _vw_awk flanksjson || exit 1
     _vw_copy "$RUN/ortho/flank_orthologs.json" "$out/flank_orthologs.json"
+    # stage 19 decided the pairs (orthology.clear_margin > 0): the viewer lists exactly those (viewer.py, flank-single-copy)
+    if CM=$(cfg orthology/clear_margin) "$GAWK" 'BEGIN { exit !(ENVIRON["CM"] + 0 > 0) }'; then
+        _vw_copy "$RUN/ortho/ortho_pairs.tsv" "$out/ortho_pairs.tsv"
+    fi
     for f in subfamily.json terminal_monomers.json; do
         if [ -f "$RUN/regions/$f" ]; then _vw_copy "$RUN/regions/$f" "$out/$f"; fi
     done
