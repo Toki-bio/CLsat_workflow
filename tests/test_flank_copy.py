@@ -107,3 +107,56 @@ def test_reciprocal_pairs():
     keep, one = FC.reciprocal_pairs({('A', 'B'), ('B', 'A'), ('A', 'C'), ('D', 'E')})
     assert keep == {('A', 'B')}
     assert one == {('A', 'C'), ('D', 'E')}
+
+
+# ---- refinements: repeat mask and cut at the next locus ----
+
+def test_n_union():
+    assert FC.n_union('ACGTNA', 'ANGTAA') == 'ANGTNA'
+
+
+def test_paf_other_pieces_masks_only_other_places():
+    paf = [
+        # self place (scfA 1001-1600, 0-based 1000-1600): ignored
+        'f1\t600\t0\t600\t+\tscfA\t9000\t1000\t1600\t600\t600\t60',
+        # another place, query letters 0-250 (1-based 1-250), 95 %: masked
+        'f1\t600\t0\t250\t+\tscfA\t9000\t5000\t5250\t238\t250\t60',
+        # too short (80 letters < 100): kept
+        'f1\t600\t400\t480\t+\tscfB\t9000\t10\t90\t80\t80\t60',
+        # too diverged (70 %): kept
+        'f1\t600\t300\t500\t+\tscfB\t9000\t200\t400\t140\t200\t60',
+    ]
+    got = FC.paf_other_pieces(paf, {'f1': ('scfA', 1001, 1600)}, 80, 100)
+    assert got == {'f1': [(1, 250)]}
+
+
+def test_cut_flank_no_neighbour_unchanged():
+    # locus 0-based [1000, 2000); L flank 401-1000, R flank 2001-2600; neighbour far away
+    loci = [(1000, 2000, 0), (9000, 9500, 1)]
+    assert FC.cut_flank('L', 401, 1000, 1000, 2000, 20000, loci, 0, 0) == (401, 1000, '')
+    assert FC.cut_flank('R', 2001, 2600, 1000, 2000, 20000, loci, 0, 0) == (2001, 2600, '')
+
+
+def test_cut_flank_splits_gap_between_loci():
+    # loci A [1000,2000) and B [2400,3000): gap letters 2001..2400 (1-based), middle 2200
+    loci = [(1000, 2000, 0), (2400, 3000, 1)]
+    a_r = FC.cut_flank('R', 2001, 5000, 1000, 2000, 20000, loci, 0, 0)
+    b_l = FC.cut_flank('L', -600, 2400, 2400, 3000, 20000, loci, 1, 0)
+    assert a_r == (2001, 2200, 'locus') and b_l == (2201, 2400, 'locus')
+    # no letter is used twice and neither flank reaches into the other locus
+    assert a_r[1] < b_l[0]
+
+
+def test_cut_flank_guard_and_overlap():
+    loci = [(1000, 2000, 0), (2400, 3000, 1)]
+    assert FC.cut_flank('R', 2001, 5000, 1000, 2000, 20000, loci, 0, 300)[1] == 2100   # min(mid 2200, 2400-300)
+    # a locus overlapping ours leaves nothing on that side
+    loci2 = [(1000, 2000, 0), (1900, 2500, 1)]
+    fs, fe, why = FC.cut_flank('R', 2001, 5000, 1000, 2000, 20000, loci2, 0, 0)
+    assert fe < fs and why == 'locus'
+
+
+def test_cut_flank_contig_ends():
+    loci = [(100, 500, 0)]
+    assert FC.cut_flank('L', -2899, 100, 100, 500, 1000, loci, 0, 0) == (1, 100, 'end')
+    assert FC.cut_flank('R', 501, 3500, 100, 500, 1000, loci, 0, 0) == (501, 1000, 'end')

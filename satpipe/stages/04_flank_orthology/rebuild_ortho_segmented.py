@@ -65,6 +65,15 @@ ap.add_argument('--clear-margin', type=float, default=0.0,
                 help='best hit must beat the second-best locus: second < margin x best bits (0 = off, old best-hit rule)')
 ap.add_argument('--reciprocal', action='store_true', help='keep a pair only if both loci choose each other')
 ap.add_argument('--threads', type=int, default=8)
+# refinements (author 2026-11-08, after the rules left molly with 84 and Darevskia with 7 anchors):
+ap.add_argument('--repeat-mask', action='store_true',
+                help='mask (N) the pieces of a flank that have another copy in the own genome (>= copy-min-pid, '
+                     '>= mask-min-aln) and the pieces matching a catalogue family, instead of rejecting the whole '
+                     'flank; the flank stays an anchor if >= min-aln letters are left (needs --single-copy)')
+ap.add_argument('--mask-min-aln', type=int, default=100, help='shortest repeated piece that is masked')
+ap.add_argument('--cut-at-locus', action='store_true',
+                help='a flank ends before the next catalogue locus (and at the contig end) instead of being '
+                     'rejected; kept if >= min-aln letters remain (for long --flank)')
 a = ap.parse_args()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import flank_copy as FC  # noqa: E402
@@ -84,6 +93,11 @@ RECIPROCAL = a.reciprocal
 THREADS = a.threads
 if RECIPROCAL and CLEAR_MARGIN <= 0:
     sys.exit('--reciprocal needs --clear-margin > 0')
+REPMASK = a.repeat_mask
+MASK_MIN_ALN = a.mask_min_aln
+CUT = a.cut_at_locus
+if REPMASK and not SINGLE:
+    sys.exit('--repeat-mask needs --single-copy')
 
 OUT = a.out
 os.makedirs(OUT, exist_ok=True)
@@ -173,6 +187,11 @@ for i, (sp, scf, s, e, fam, lid, mono) in enumerate(loci):
             fs, fe = s - FLANK + 1, s
         else:
             fs, fe = e + 1, e + FLANK
+        if CUT:
+            fs, fe, why = FC.cut_flank(side, fs, fe, s, e, SL[(sp, scf)], lidx[(sp, scf)], i, GUARD)
+            if fe - fs + 1 < MIN_ALN:
+                fclass[(i, side)] = 'satellite' if why == 'locus' else 'truncated'
+                continue
         if fs < 1 or fe > SL[(sp, scf)]:
             fclass[(i, side)] = 'truncated'; continue
         if overlaps_other(sp, scf, fs, fe, i):
@@ -208,10 +227,41 @@ for line in o.splitlines():
             continue
         if alen >= 60 and pid >= 75:
             sat_drop.add(p[0])
+sat_masked = {}
+if REPMASK:
+    # mask the catalogue-family pieces instead of dropping the flank; ssearch36 gives one alignment per query x
+    # family, so repeat until no piece is left (a flank can hold several separate pieces)
+    for rnd_ in range(30):
+        hit = collections.defaultdict(list)
+        for line in o.splitlines():
+            p = line.split('\t')
+            if line.startswith('#') or len(p) < 12:
+                continue
+            try:
+                alen, pid, qs, qe = int(p[3]), float(p[2]), int(p[6]), int(p[7])
+            except ValueError:
+                continue
+            if alen >= 60 and pid >= 75:
+                hit[p[0]].append((min(qs, qe), max(qs, qe)))
+        if not hit:
+            break
+        for k in list(flanks):
+            nm = '%d_%s' % k
+            if nm in hit:
+                sp, seq, g = flanks[k]
+                mseq, n = FC.mask(seq, 1, FC.merge(hit[nm]))
+                sat_masked[k] = sat_masked.get(k, 0) + n
+                flanks[k] = (sp, mseq, g)
+        with open(OUT + '/uflanks.fa', 'w') as f:
+            for (i, side), (sp, seq, g) in flanks.items():
+                f.write('>%d_%s\n%s\n' % (i, side, seq))
+        o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-2', '-b', '4000', '-d', '1',
+                            OUT + '/uflanks.fa', OUT + '/allcons.x2.fa'], capture_output=True, text=True).stdout
+    sat_drop = set('%d_%s' % k for k, v in flanks.items() if FC.unmasked(v[1]) < MIN_ALN)
 for k in list(flanks):
     if '%d_%s' % (k[0], k[1]) in sat_drop:
         del flanks[k]; fclass[k] = 'satellite'
-print('after residual-satellite drop: %d unique anchors' % len(flanks), flush=True)
+print('after residual-satellite %s: %d unique anchors' % ('mask' if REPMASK else 'drop', len(flanks)), flush=True)
 
 # ---- 3b. tandem mask from the run's genome-wide TRF calls (flank_copy.py rule 1) ----
 masked_bp = {}
@@ -234,18 +284,55 @@ if TRF_DAT:
         raw = flankseq[k][0]
         mseq, n = FC.mask(raw, fs, TIV[sp].get(scf, []))
         masked_bp[k] = n
-        if FC.unmasked(mseq) < MIN_ALN:
+        omseq = FC.n_union(mseq if k[1] == 'R' else rc(mseq), oseq)   # keep the satellite mask (--repeat-mask)
+        if FC.unmasked(omseq) < MIN_ALN:
             del flanks[k]; fclass[k] = 'tandem'; continue
-        flanks[k] = (sp, mseq if k[1] == 'R' else rc(mseq), (scf, fs, fe))
+        flanks[k] = (sp, omseq, (scf, fs, fe))
     print('after tandem mask: %d anchors (%d flanks mostly tandem repeat)'
           % (len(flanks), sum(1 for v in fclass.values() if v == 'tandem')), flush=True)
+
+# ---- 3c. repeat mask: pieces with another copy in the own genome become N (--repeat-mask) ----
+rep_masked = {}
+if REPMASK:
+    MM = shutil.which('minimap2') or sys.exit('--repeat-mask needs minimap2 on PATH')
+    by_sp = collections.defaultdict(list)
+    for k, (sp, seq, g) in flanks.items():
+        by_sp[sp].append(k)
+    for sp in ASM:
+        ks = by_sp.get(sp)
+        if not ks:
+            continue
+        qfa = OUT + '/repmask_%s.fa' % sp
+        place = {}
+        with open(qfa, 'w') as f:
+            for k in ks:
+                nm = '%d_%s' % k
+                f.write('>%s\n%s\n' % (nm, flanks[k][1]))
+                place[nm] = flanks[k][2]
+        r = subprocess.run([MM, '-k13', '-w4', '-s40', '-m25', '-A2', '-B4', '-O4,24', '-E2,1', '-c', '-N', '200', '-p', '0',
+                            '-t', str(THREADS), GEN[sp], qfa], capture_output=True, text=True)
+        if r.returncode:
+            sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
+        piv = FC.paf_other_pieces(r.stdout.splitlines(), place, COPY_MIN_PID, MASK_MIN_ALN)
+        for k in ks:
+            nm = '%d_%s' % k
+            sp_, seq, g = flanks[k]
+            mseq, n = FC.mask(seq, 1, FC.merge(piv.get(nm, [])))
+            rep_masked[k] = n
+            if FC.unmasked(mseq) < MIN_ALN:
+                del flanks[k]; fclass[k] = 'repeated'; continue
+            flanks[k] = (sp_, mseq, g)
+    print('after repeat mask: %d anchors (%d flanks mostly repeated pieces)'
+          % (len(flanks), sum(1 for v in fclass.values() if v == 'repeated')), flush=True)
 
 # ---- 4. cross-assembly orthology at three thresholds (for viewer 70/80/90) ----
 with open(OUT + '/uflanks.fa', 'w') as f:
     for (i, side), (sp, seq, g) in flanks.items():
         f.write('>%d_%s\n%s\n' % (i, side, seq))
-o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '4000', OUT + '/uflanks.fa',
-                    OUT + '/uflanks.fa'], capture_output=True, text=True).stdout
+# threads only with --repeat-mask (long flanks); the published runs keep the single-thread call unchanged
+o = subprocess.run([SS, '-n', '-z', '3', '-m', '8C', '-E', '1e-3', '-b', '4000']
+                   + (['-T', str(THREADS)] if REPMASK else []) + [OUT + '/uflanks.fa', OUT + '/uflanks.fa'],
+                   capture_output=True, text=True).stdout
 
 # collect all cross-assembly hits with alen>=MIN_ALN (threshold on pid applied later per-level)
 allhits = []   # (q, t, pid, alen, bits, side)
@@ -265,7 +352,10 @@ for line in o.splitlines():
     if loci[qi][0] == loci[ti][0]:
         # same genome: never an ortholog; with --single-copy it is evidence that the flank is not single copy
         if SINGLE and qi != ti and alen >= COPY_MIN_ALN and pid >= COPY_MIN_PID:
-            own_hits[q].add(ti)
+            # two flanks that share genome letters (loci < 2 x flank apart) are one place, not two copies
+            gq, gt = flanks[(qi, q.split('_')[1])][2], flanks[(ti, t.split('_')[1])][2]
+            if not (gq[0] == gt[0] and gq[1] <= gt[2] and gt[1] <= gq[2]):
+                own_hits[q].add(ti)
         continue
     if q == t or alen < MIN_ALN:
         continue
@@ -431,11 +521,18 @@ with open(OUT + '/ortho_pairs.tsv', 'w') as f:
 if TRF_DAT or SINGLE:
     # per anchor-candidate flank: tandem letters masked, other loci / other genome places hit, verdict
     with open(OUT + '/flank_copies.tsv', 'w') as f:
-        f.write('locus\tside\tgenome\tmasked_tandem_bp\tother_locus_flanks\tother_genome_places\tclass\n')
-        for (i, side) in sorted(set(masked_bp) | set(copies), key=lambda k: (lid_of[k[0]], k[1])):
+        f.write('locus\tside\tgenome\tmasked_tandem_bp\tother_locus_flanks\tother_genome_places\tclass'
+                + ('\tflank_bp\tmasked_satellite_bp\tmasked_repeat_bp\tleft_bp' if REPMASK else '') + '\n')
+        for (i, side) in sorted(set(masked_bp) | set(copies) | set(rep_masked), key=lambda k: (lid_of[k[0]], k[1])):
             c = copies.get((i, side), ['', '', ''])
-            f.write('%s\t%s\t%s\t%s\t%s\t%s\t%s\n' % (lid_of[i], side, loci[i][0], masked_bp.get((i, side), ''),
-                                                    c[0], '' if c[1] is None else c[1], fclass[(i, side)]))
+            f.write('%s\t%s\t%s\t%s\t%s\t%s\t%s' % (lid_of[i], side, loci[i][0], masked_bp.get((i, side), ''),
+                                                c[0], '' if c[1] is None else c[1], fclass[(i, side)]))
+            if REPMASK:
+                fq = flankseq.get((i, side))
+                left = FC.unmasked(flanks[(i, side)][1]) if (i, side) in flanks else 0
+                f.write('\t%s\t%s\t%s\t%s' % (len(fq[0]) if fq else '', sat_masked.get((i, side), ''),
+                                               rep_masked.get((i, side), ''), left))
+            f.write('\n')
 if RECIPROCAL:
     with open(OUT + '/ortho_oneway.tsv', 'w') as f:
         f.write('locusA\tlocusB\tspA\tspB\n')

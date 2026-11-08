@@ -121,3 +121,63 @@ def reciprocal_pairs(directed):
         else:
             oneway.add((a, b))
     return keep, oneway
+
+
+# ---- refinements, author 2026-11-08 (after the rules left molly with 84 anchors and Darevskia with 7) ----
+
+def n_union(a, b):
+    """Two versions of the same flank (same length): N wherever either has N."""
+    if len(a) != len(b):
+        raise ValueError('n_union: lengths differ (%d vs %d)' % (len(a), len(b)))
+    return ''.join('N' if (x in 'Nn' or y in 'Nn') else x for x, y in zip(a, b))
+
+
+def paf_other_pieces(paf_lines, self_place, min_pid, min_aln):
+    """Like paf_other_copies, but returns the query pieces that have another copy:
+    {query: [(start1, end1), ...]} (1-based inclusive, on the query as written), for hits with aligned block
+    >= min_aln and identity >= min_pid that are not the query's own place."""
+    out = collections.defaultdict(list)
+    for line in paf_lines:
+        p = line.rstrip('\n').split('\t')
+        if len(p) < 12:
+            continue
+        q, qs, qe, t, ts, te, match, block = p[0], int(p[2]), int(p[3]), p[5], int(p[7]), int(p[8]), int(p[9]), int(p[10])
+        if block < min_aln or 100.0 * match / block < min_pid:
+            continue
+        sp = self_place.get(q)
+        if sp and t == sp[0] and ts < sp[2] and te > sp[1] - 1:
+            continue
+        out[q].append((qs + 1, qe))
+    return dict(out)
+
+
+def cut_flank(side, fs, fe, s, e, contig_len, loci_on_contig, self_i, guard):
+    """Shorten a flank window instead of rejecting it (--cut-at-locus).
+    Flank [fs, fe] is 1-based inclusive; loci are (s2, e2, j), 0-based half-open, so a locus occupies the 1-based
+    letters s2+1..e2. When another locus lies on the flank's side, the letters between the two loci are split at
+    their middle: the left locus' R flank ends at the middle letter, the right locus' L flank starts after it, so
+    no letter serves as flank for two loci and a flank never reaches into another locus (guard letters kept free).
+    Returns (fs, fe, why): why = 'locus' if another locus cut it, 'end' if the contig end did, '' otherwise.
+    fe < fs means nothing is left."""
+    why = ''
+    if side == 'L':
+        for (s2, e2, j) in loci_on_contig:
+            if j == self_i or s2 >= s:
+                continue
+            mid = (e2 + 1 + s) // 2
+            lo = max(mid + 1, e2 + 1 + guard)
+            if lo > fs:
+                fs, why = lo, 'locus'
+        if fs < 1:
+            fs, why = 1, why or 'end'
+    else:
+        for (s2, e2, j) in loci_on_contig:
+            if j == self_i or e2 <= e:
+                continue
+            mid = (e + 1 + s2) // 2
+            hi = min(mid, s2 - guard)
+            if hi < fe:
+                fe, why = hi, 'locus'
+        if fe > contig_len:
+            fe, why = contig_len, why or 'end'
+    return fs, fe, why
