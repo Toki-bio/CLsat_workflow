@@ -17,7 +17,7 @@ import bisect
 import collections
 
 
-def parse_trf_dat(path, wanted):
+def parse_trf_dat(path, wanted, merged=True):
     """TRF .dat (1-based inclusive) -> {scaffold: [(start, end), ...]} for scaffolds in `wanted`, merged and sorted.
     Streams the file; scaffolds not in `wanted` are skipped without storing."""
     out = collections.defaultdict(list)
@@ -35,7 +35,7 @@ def parse_trf_dat(path, wanted):
             except (ValueError, IndexError):
                 continue
             out[scf].append((s, e))
-    return {k: merge(v) for k, v in out.items()}
+    return {k: merge(v) for k, v in out.items()} if merged else dict(out)
 
 
 def merge(iv):
@@ -196,4 +196,17 @@ def joint_scores(hl, hr):
                     best = xb + yb
         if best is not None:
             out[t] = best
+    return out
+
+
+def drop_calls_in_loci(calls, loci_iv, frac=0.5):
+    """TRF calls (1-based inclusive) of one scaffold minus those lying mostly (>= frac of their letters) inside
+    catalogue loci (0-based half-open (s, e)). Such a call is the array itself, or a call bridging two arrays across
+    the unique letters between them (TRF does this at low identity); masking it would mask unique flank letters.
+    A real continuation of the array into the flank is caught by the satellite-family mask instead."""
+    out = []
+    for a, b in calls:
+        inside = sum(max(0, min(b, e) - max(a - 1, s)) for s, e in loci_iv)
+        if inside < frac * (b - a + 1):
+            out.append((a, b))
     return out

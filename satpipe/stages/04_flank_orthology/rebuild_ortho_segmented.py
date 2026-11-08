@@ -306,9 +306,11 @@ def prep(FLANK, keys):
         for sp, paths in TRF_DAT.items():
             acc = collections.defaultdict(list)
             for pth in paths:
-                for scf, iv in FC.parse_trf_dat(pth, need.get(sp, set())).items():
+                for scf, iv in FC.parse_trf_dat(pth, need.get(sp, set()), merged=False).items():
                     acc[scf].extend(iv)
-            TIV[sp] = {scf: FC.merge(iv) for scf, iv in acc.items()}
+            # calls lying mostly inside catalogue arrays are the arrays (or bridges between two arrays): not used
+            TIV[sp] = {scf: FC.merge(FC.drop_calls_in_loci(iv, [(s2, e2) for s2, e2, _ in lidx[(sp, scf)]]))
+                       for scf, iv in acc.items()}
         miss = sorted(sp for sp in need if sp not in TRF_DAT)
         if miss:
             sys.exit('--trf-dat given but no TRF calls for genome(s): %s' % ', '.join(miss))

@@ -172,3 +172,11 @@ def test_joint_scores_needs_both_flanks_on_opposite_sides():
 def test_joint_scores_inverted_target():
     # target in opposite orientation: our L flank matches its R flank and vice versa
     assert FC.joint_scores({'X': {'R': 250}}, {'X': {'L': 260}}) == {'X': 510}
+
+
+def test_drop_calls_in_loci():
+    loci = [(59202, 62200), (63202, 66200)]          # two arrays, 1,000 unique letters between them
+    calls = [(59203, 62200), (59203, 66200), (63203, 66200), (66100, 66500), (62300, 62400)]
+    # the arrays and the bridge across the gap go; a call reaching 300 letters into the flank and a call
+    # inside the gap stay
+    assert FC.drop_calls_in_loci(calls, loci) == [(66100, 66500), (62300, 62400)]
