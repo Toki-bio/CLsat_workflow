@@ -392,8 +392,8 @@ RAWMAX = {}     # flank -> (fs, fe, raw seq) of its longest window (shorter wind
 PIECES = {}     # flank -> pieces (1-based, oriented array->outward) with another own-genome copy
 if REPMASK:
     # one minimap2 search per genome, on the longest windows (tandem letters masked): the pieces of every shorter
-    # window are the same pieces cut at its length. Replaces one search per extension round, and the separate
-    # whole-genome copy test (a second copy >= copy-min-aln is made of pieces >= mask-min-aln, all masked).
+    # window are the same pieces cut at its length. Replaces one search per extension round; the whole-genome
+    # copy test on the masked flanks (4b) still runs once at the end.
     MM = shutil.which('minimap2') or sys.exit('--repeat-mask needs minimap2 on PATH')
     TV = trf_intervals() if TRF_DAT else {}
     by_sp = collections.defaultdict(list)
@@ -486,9 +486,10 @@ if SINGLE:
         copies[k] = [len(own_hits.get(nm, ())), None, '']
     by_sp = collections.defaultdict(list)
     for k, (sp, seq, g) in flanks.items():
-        if REPMASK:
-            copies[k][1] = 0                      # every piece with another copy is already masked (3c)
-        elif not copies[k][0]:                    # already repeated among locus flanks: no genome search needed
+        # kept with --repeat-mask too: minimap2 reports at most -N 200 alignments per query, so on an unmasked
+        # flank a piece with hundreds of copies hides the copies of the other pieces; the masked flank shows them
+        # (molly 3,000 letters: 55 flanks passed without this test, 2026-11-08)
+        if not copies[k][0]:                      # already repeated among locus flanks: no genome search needed
             by_sp[sp].append(k)
     for sp in ASM:
         ks = by_sp.get(sp)
