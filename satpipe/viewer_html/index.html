@@ -1339,7 +1339,7 @@ function collectTerminalTrim(result, rawSeq, genomicStart) {
                neighborSub: nb?nb.sub:null, gap: nb?nb.gap:null };
     }
     if (cls === 'truncated') return { kind:'contig', cls };
-    if (cls === 'unique' || cls === 'lowcomplex' || cls === 'telomeric'){
+    if (['unique','lowcomplex','telomeric','tandem','repeated','masked'].includes(cls)){
       // 15 bp immediately beyond the boundary, in genomic-forward orientation.
       let snip = '';
       if (fl && fl.seq) snip = side === 'L' ? fl.seq.slice(-15) : fl.seq.slice(0, 15);
@@ -1378,7 +1378,10 @@ function renderTerminalTrim() {
   const consLen = refSeq.length;
   const ntCol = {A:'#27ae60',C:'#2980b9',G:'#d35400',T:'#c0392b'};
   const clsColor = (f) => CLSAT_COLORS[f] || '#9ca3af';
-  const CLS_NAME = { unique:'unique sequence', lowcomplex:'low-complexity sequence', telomeric:'telomeric repeat' };
+  const CLS_NAME = { unique:'unique sequence', lowcomplex:'low-complexity sequence', telomeric:'telomeric repeat',
+                     tandem:'flank mostly tandem repeat (TRF), no anchor',
+                     repeated:'flank with another copy in its own genome, no anchor',
+                     masked:'flank mostly masked repeated pieces, no anchor' };
 
   // One aligned ref/monomer row-pair, showing trim5/trim3 (is the terminal monomer whole?).
   function monomerAln(monSeq){
@@ -4023,7 +4026,17 @@ function showFlanks(){
 
   // base coloring for traceable comparison
   const BASE_COL = {A:"#22c55e", C:"#3b82f6", G:"#f59e0b", T:"#ef4444", N:"#6b7280", "-":"#374151"};
-  function colorSeq(seq, refSeq, align){
+  // masked letters of stage 19 (flanks.json mask: {satellite|tandem|repeat: [[a,b] genomic 1-based]})
+  const MASK_COL = {satellite:"#f472b6", tandem:"#fb923c", repeat:"#94a3b8"};
+  const MASK_NAME = {satellite:"catalogue-satellite piece", tandem:"tandem repeat (TRF)", repeat:"piece with another copy in the own genome"};
+  function maskKinds(f){            // per letter of f.seq (genomic order): kind or null
+    const out = new Array(f && f.seq ? f.seq.length : 0).fill(null);
+    if (!f || !f.mask) return out;
+    for (const kind in f.mask) for (const [a,b] of f.mask[kind])
+      for (let x=a; x<=b; x++){ const j = x - f.start; if (j>=0 && j<out.length) out[j] = kind; }
+    return out;
+  }
+  function colorSeq(seq, refSeq, align, mk){
     // align right: pad so junction-proximal ends line up. seq already oriented.
     let out = "";
     for (let i=0;i<seq.length;i++){
@@ -4031,9 +4044,29 @@ function showFlanks(){
       const col = BASE_COL[ch] || "#9ca3af";
       // if a reference is provided, dim mismatches subtly by underlining matches
       let match = refSeq && i < refSeq.length && refSeq[i] && refSeq[i].toUpperCase() === ch;
-      out += `<span style="color:${col};${match?'border-bottom:1px solid #34d399;':''}">${ch}</span>`;
+      const k = mk ? mk[i] : null;
+      out += k ? `<span style="color:#0b0f17; background:${MASK_COL[k]};" title="masked: ${MASK_NAME[k]}">${ch}</span>`
+               : `<span style="color:${col};${match?'border-bottom:1px solid #34d399;':''}">${ch}</span>`;
     }
     return out;
+  }
+  // the whole flank as a strip: masked runs coloured by kind, the rest = the letters the search used
+  function maskStrip(f, side){
+    if (!f || !f.seq) return `<span style="color:#475569;">${side}: no flank</span>`;
+    const mk = maskKinds(f), n = mk.length;
+    let segs = '', i = 0;
+    while (i < n){
+      let j = i; while (j < n && mk[j] === mk[i]) j++;
+      const w = (100 * (j - i) / n).toFixed(3);
+      segs += `<span style="display:inline-block; height:9px; width:${w}%; background:${mk[i] ? MASK_COL[mk[i]] : '#1d4ed8'};"`
+            + ` title="${(f.start+i).toLocaleString()}-${(f.start+j-1).toLocaleString()}: ${mk[i] ? 'masked, ' + MASK_NAME[mk[i]] : 'used'}"></span>`;
+      i = j;
+    }
+    const left = (f.left != null) ? f.left : n;
+    return `<div style="margin:2px 0;"><span style="color:#94a3b8;">${side} ${n.toLocaleString()} bp, ${f.class}`
+         + (f.mask ? (f.class === 'unique' ? `, ${left.toLocaleString()} letters used in the search`
+                                           : `, ${left.toLocaleString()} letters left after masking; not an anchor`) : '') + `</span>`
+         + `<div style="width:100%; max-width:600px; background:#0f172a; line-height:0; white-space:nowrap; overflow:hidden; border-radius:2px;">${segs}</div></div>`;
   }
 
   function collapsedSat(d){
@@ -4121,9 +4154,23 @@ function showFlanks(){
     return `<div style="white-space:nowrap; margin:3px 0; line-height:1.4;">`
          + `${tagHtml}<br>${lfHtml} ${collapsedSat(satD)} ${rfHtml}</div>`;
   }
+  function focalRow(){
+    const mkL = fd.LF && fd.LF.seq ? maskKinds(fd.LF).slice(-N) : null, mkR = fd.RF && fd.RF.seq ? maskKinds(fd.RF).slice(0, N) : null;
+    const lfHtml = focalLF ? `<span style="display:inline-block; text-align:right; min-width:${N}ch;">${colorSeq(focalLF, null, null, mkL)}</span>`
+                           : `<span style="display:inline-block; min-width:${N}ch; text-align:right; color:#475569;">(no left flank)</span>`;
+    const rfHtml = focalRF ? `<span style="display:inline-block; min-width:${N}ch;">${colorSeq(focalRF, null, null, mkR)}</span>`
+                           : `<span style="display:inline-block; min-width:${N}ch; color:#475569;">(no right flank)</span>`;
+    const anyMask = (fd.LF && fd.LF.mask) || (fd.RF && fd.RF.mask);
+    return `<div style="white-space:nowrap; margin:3px 0; line-height:1.4;">`
+         + `<span style="color:#60a5fa; font-weight:700;">${lid} (focal)</span><br>${lfHtml} ${collapsedSat(fd)} ${rfHtml}</div>`
+         + (anyMask ? `<div style="font-size:10px; margin-top:4px;">${maskStrip(fd.LF, 'LF')}${maskStrip(fd.RF, 'RF')}`
+           + `<div style="color:#64748b;">blue = letters the ortholog search used; `
+           + Object.keys(MASK_COL).map(k => `<span style="color:${MASK_COL[k]};">\u25a0</span> ${MASK_NAME[k]}`).join('; ')
+           + ` (masked, N in the search). Strips run in genomic order, left to right.</div></div>` : '');
+  }
 
   html += `<div style="border:1px solid #1e3a5f; border-radius:5px; padding:6px; margin-bottom:8px;">`
-        + row(`<span style="color:#60a5fa; font-weight:700;">${lid} (focal)</span>`, focalLF, fd, focalRF, null, null)
+        + focalRow()
         + `</div>`;
 
   // orthologs
@@ -4132,6 +4179,14 @@ function showFlanks(){
   const byLocus = {};
   for (const o of orthLF){ byLocus[o.locus] = byLocus[o.locus] || {sp:o.sp}; byLocus[o.locus].LF = o; }
   for (const o of orthRF){ byLocus[o.locus] = byLocus[o.locus] || {sp:o.sp}; byLocus[o.locus].RF = o; }
+  // with the stage-19 clear-best rule the orthologs are the decided pairs (viewer_config lists); raw hits are evidence
+  const decided = !!(VIEWER_CONFIG && VIEWER_CONFIG.orthology && VIEWER_CONFIG.orthology.decided_pairs);
+  const pairSet = new Set();
+  if (decided){
+    const ent = ORTHO_LOCI.find(r => r.id === lid);
+    if (ent) for (const sp in ent.partners) for (const p of ent.partners[sp]) pairSet.add(p);
+    for (const p of pairSet) if (!byLocus[p]) byLocus[p] = {sp: (flankData[p] && flankData[p].sp) || '?', fromPartner: true};
+  }
   const orthLoci = Object.keys(byLocus);
 
   if (!orthLoci.length){
@@ -4142,6 +4197,12 @@ function showFlanks(){
       const sb = (byLocus[b].LF?byLocus[b].LF.bits:0)+(byLocus[b].RF?byLocus[b].RF.bits:0);
       return sb - sa;
     });
+    if (decided){
+      orthLoci.sort((a,b) => (pairSet.has(b) ? 1 : 0) - (pairSet.has(a) ? 1 : 0));
+      html += `<div style="color:#34d399; margin-bottom:4px;">Ortholog pairs (stage-19 rule, see the Orthologous loci tab): ${pairSet.size}`
+            + ` <span style="color:#64748b;">&middot; flank hits at \u2265${thr}% id that are not a pair (second best too close, or one-way): `
+            + `${orthLoci.filter(x => !pairSet.has(x)).length}</span></div>`;
+    } else
     html += `<div style="color:#34d399; margin-bottom:4px;">Cross-species orthologs (\u2265${thr}% id, \u2265200 bp): ${orthLoci.length}</div>`;
     for (const ol of orthLoci){
       const od = flankData[ol];
@@ -4154,7 +4215,11 @@ function showFlanks(){
       const rc = (o) => o==='rc' ? ` <span style="color:#f59e0b; font-weight:700;">(rc)</span>` : '';
       const lfTag = m.LF ? `<span style="color:#34d399;">LF ${m.LF.pid}% / ${m.LF.aln}bp${rc(lfOri)}</span>` : `<span style="color:#475569;">LF \u2014</span>`;
       const rfTag = m.RF ? `<span style="color:#34d399;">RF ${m.RF.pid}% / ${m.RF.aln}bp${rc(rfOri)}</span>` : `<span style="color:#475569;">RF \u2014</span>`;
-      const tag = `<span onclick="jumpToLocusId('${ol}')" style="color:#60a5fa; font-weight:700; cursor:pointer; text-decoration:underline;">${ol}</span> `
+      const pairTag = !decided ? '' : pairSet.has(ol)
+          ? `<span style="color:#0b0f17; background:#34d399; border-radius:3px; padding:0 4px; font-size:10px; font-weight:700;">pair</span>`
+            + (m.fromPartner ? ` <span style="color:#64748b; font-size:10px;">(chosen from ${ol}'s flank)</span>` : '') + ' '
+          : `<span style="color:#9ca3af; border:1px solid #475569; border-radius:3px; padding:0 4px; font-size:10px;">hit, not a pair</span> `;
+      const tag = pairTag + `<span onclick="jumpToLocusId('${ol}')" style="color:#60a5fa; font-weight:700; cursor:pointer; text-decoration:underline;">${ol}</span> `
                 + `<span style="color:#9ca3af;">${m.sp}</span> &nbsp; ${lfTag} &nbsp; ${rfTag} &nbsp; `
                 + `<span onclick="toggleOrthoDetail('${ol}')" style="color:#a78bfa; font-size:10px; text-decoration:underline; cursor:pointer;">[align]</span>`;
       if (od){
@@ -4305,6 +4370,7 @@ function bindEndsFlanksUI(){
   .fb-unique{background:#60a5fa;} .fb-lowcomplex{background:#fbbf24;}
   .fb-truncated{background:#374151;color:#9ca3af;} .fb-satellite{background:#f472b6;}
   .fb-telomeric{background:#a78bfa;} .fb-none{background:#1f2937;color:#4b5563;}
+  .fb-tandem{background:#fb923c;} .fb-repeated{background:#f87171;} .fb-masked{background:#94a3b8;}
   .chipSame{border-color:#166534;} .chipDiff{border-color:#b91c1c;color:#fca5a5;}
   .bothMark{color:#34d399;font-weight:700;margin-left:4px;} .subLow{color:#6b7280;font-weight:400;}
   #listNote{padding:6px 14px;border-top:1px solid #24344d;color:#7d8798;font-size:10px;}
@@ -4429,7 +4495,9 @@ function bindEndsFlanksUI(){
     <li><b>Flank orthology table</b> &mdash; the full per-locus table for <b>all 627</b> catalogue loci (plus L541, which has no anchorable flank) (every assembly), with the
       sub-subfamily call and both flanks' cross-assembly orthology status. Filter by anchorable / has-ortholog /
       both-sided / same- vs different-family partner. L and R badges give each flank's class (blue = unique/anchorable,
-      amber = low-complexity, grey = truncated, pink = satellite-adjacent, purple = telomeric); a red-bordered partner
+      amber = low-complexity, grey = truncated, pink = satellite-adjacent, purple = telomeric; with the single-copy rule
+      also orange = mostly tandem repeat, red = another copy in its own genome, slate = mostly masked repeated pieces,
+      none of them an anchor); a red-bordered partner
       chip flags a different-family ortholog.</li>
     <li><b>Flagged loci</b> &mdash; 28 catalogue loci annotated by arbitration (plus the 7 uncatalogued candidates C1&ndash;C7, listed for inspection) for one of three different reasons, not all equally noteworthy:
       <b>L186</b> is the only genuine <b>seed/rescan contradiction</b> (rescan favours a different family by &ge;20 bits) and

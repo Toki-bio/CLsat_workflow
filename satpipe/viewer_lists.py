@@ -51,9 +51,23 @@ def _best_partner(hits):
     return sorted(hits, key=lambda h: (-float(h.get('bits', 0)), -float(h.get('pid', 0)), h['locus']))[0]
 
 
-def build_lists(master, assign, flanks, orthologs, subfam, threshold='80'):
+def read_pairs(path):
+    """ortho_pairs.tsv of stage 19 (header locusA locusB ...): the decided ortholog pairs [(a, b)]"""
+    out = []
+    for line in open(path):
+        p = line.rstrip('\n').split('\t')
+        if len(p) < 2 or p[0] == 'locusA':
+            continue
+        out.append((p[0], p[1]))
+    return out
+
+
+def build_lists(master, assign, flanks, orthologs, subfam, threshold='80', pairs=None):
     """master: list from read_master (catalogue order); assign: read_assign; flanks/orthologs/subfam:
-    the loaded JSON products (may be None). Returns (ortho_loci, flagged_loci, full_table)."""
+    the loaded JSON products (may be None). pairs: the decided ortholog pairs of stage 19 (read_pairs); when given,
+    a locus's orthologs are exactly these pairs and the raw flank hits are only evidence (best hit per flank,
+    which sides support a pair). None = the published viewer: every hit at `threshold` is a partner.
+    Returns (ortho_loci, flagged_loci, full_table)."""
     flanks = flanks or {}
     orthologs = orthologs or {}
     subfam = subfam or {}
@@ -75,6 +89,11 @@ def build_lists(master, assign, flanks, orthologs, subfam, threshold='80'):
                 partners.setdefault(t, set()).add(q)
                 forward.setdefault(q, []).append(t)
                 pair_sides.setdefault(frozenset((q, t)), set()).add(key)
+    if pairs is not None:
+        partners = {}
+        for a, b in pairs:
+            partners.setdefault(a, set()).add(b)
+            partners.setdefault(b, set()).add(a)
 
     full = []
     ortho = []
@@ -114,7 +133,7 @@ def build_lists(master, assign, flanks, orthologs, subfam, threshold='80'):
             row['ortho'] = True
             # family agreement is judged on the best partner of each of the locus's OWN flanks
             # (the lfp/rfp columns); a locus that is only ever a target is judged on everything that hit it
-            judged = [row[k] for k in ('lfp', 'rfp') if k in row] or sorted(mine)
+            judged = sorted(mine) if pairs is not None else ([row[k] for k in ('lfp', 'rfp') if k in row] or sorted(mine))
             row['pfam'] = 'SAME' if all(fam_of.get(p) == fam for p in judged) else 'DIFFERENT'
         # both-sided = member of at least one partner pair "recovered from both flank sides"
         # (manuscript Methods 5): the pair is supported by an L-sourced AND an R-sourced hit, in
