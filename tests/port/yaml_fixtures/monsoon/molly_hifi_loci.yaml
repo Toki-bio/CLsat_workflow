@@ -1,0 +1,37 @@
+# Amazon molly HiFi assemblies, loci and arrays (stages 09-21; stages 01-08 inherited from molly_final/run), final workflow, 2026-10-26.
+# lat = P. latipinna, mex = P. mexicana, Flat / Fmex = Amazon molly copies inherited from latipinna / mexicana.
+run_name: molly_hifi_final
+out_dir: /scratch/sk4386/molly_final/run_loci
+genomes:
+  lat:  /scratch/sk4386/molly_asm/asm_full/lat/lat.p_ctg.fa
+  mex:  /scratch/sk4386/molly_asm/asm_full/mex/mex.p_ctg.fa
+  Flat: /scratch/sk4386/molly_asm/asm_full/formosa_trio/formosa.hap1.fa
+  Fmex: /scratch/sk4386/molly_asm/asm_full/formosa_trio/formosa.hap2.fa
+families:
+  MG01: {consensus: /scratch/sk4386/molly_final/families/MG01.cons.fa, mono: 186}
+  MG02: {consensus: /scratch/sk4386/molly_final/families/MG02.cons.fa, mono: 84}
+  MG03: {consensus: /scratch/sk4386/molly_final/families/MG03.cons.fa, mono: 152}
+  MG04: {consensus: /scratch/sk4386/molly_final/families/MG04.cons.fa, mono: 105}
+  MG05: {consensus: /scratch/sk4386/molly_final/families/MG05.cons.fa, mono: 80}
+  MG06: {consensus: /scratch/sk4386/molly_final/families/MG06.cons.fa, mono: 256}
+  MG07: {consensus: /scratch/sk4386/molly_final/families/MG07.cons.fa, mono: 186}
+  MG08: {consensus: /scratch/sk4386/molly_final/families/MG08.cons.fa, mono: 169}
+  MG09: {consensus: /scratch/sk4386/molly_final/families/MG09.cons.fa, mono: 176}
+  MG10: {consensus: /scratch/sk4386/molly_final/families/MG10.cons.fa, mono: 183}
+  MG11: {consensus: /scratch/sk4386/molly_final/families/MG11.cons.fa, mono: 175}
+  MG12: {consensus: /scratch/sk4386/molly_final/families/MG12.cons.fa, mono: 103}
+  MG13: {consensus: /scratch/sk4386/molly_final/families/MG13.cons.fa, mono: 81}
+  MG14: {consensus: /scratch/sk4386/molly_final/families/MG14.cons.fa, mono: 78}
+  MG15: {consensus: /scratch/sk4386/molly_final/families/MG15.cons.fa, mono: 82}
+  MG16a: {consensus: /scratch/sk4386/molly_final/families/MG16a.cons.fa, mono: 175}
+  MG16b: {consensus: /scratch/sk4386/molly_final/families/MG16b.cons.fa, mono: 171}
+  MG17: {consensus: /scratch/sk4386/molly_final/families/MG17.cons.fa, mono: 151}
+  MG18: {consensus: /scratch/sk4386/molly_final/families/MG18.cons.fa, mono: 123}
+  MG19: {consensus: /scratch/sk4386/molly_final/families/MG19.cons.fa, mono: 109}
+  MG20: {consensus: /scratch/sk4386/molly_final/families/MG20.cons.fa, mono: 112}
+family_assignment: /scratch/sk4386/molly_final/cluster_family.tsv
+expansion: {jobs: 32}
+finalisation:
+  large_scaffold_bp: 80000000
+  trf_timeout: 600
+discovery: {strand: both, monomerize: true}

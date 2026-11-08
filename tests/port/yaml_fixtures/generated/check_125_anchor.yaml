@@ -1,0 +1,16 @@
+
+run_name: toy
+out_dir: ../runs/toy
+genomes:
+  spa: ../genomes/spa.fna
+  spb: ../genomes/spb.fna
+inputs:
+  trf_dat:
+    spa: ../trf/spa.dat
+    spb: ../trf/spb.dat
+families:
+  SatX: {consensus: ../ref/SatX.cons.fa, mono: 148}
+family_assignment: ../ref/cluster_family.tsv
+manual_loci: ../ref/manual.bed
+
+anchor: {family: NoSuchFamily}

@@ -1,0 +1,20 @@
+# Amazon molly test case (work-plan step 9); see tests/molly/run_molly.sh
+run_name: molly_2021_halves
+out_dir: /w/toy work/run
+genomes:
+  lat: /w/toy work/ref/lat.fna
+  mex: /w/toy work/ref/mex.fna
+inputs:
+  trf_dat: {lat: /data/molly/wf37/dat/lat.dat, mex: /data/molly/wf37/dat/mex.dat}
+families:
+  MolSat1: {consensus: /w/toy work/ref/MolSat1.cons.fa, mono: 146, colour: "#60a5fa"}
+  MolSat2: {consensus: /w/toy work/ref/MolSat2.cons.fa, mono: 146, colour: "#34d399"}
+  MolSat3: {consensus: /w/toy work/ref/MolSat3.cons.fa, mono: 146, colour: "#f472b6"}
+family_assignment: /w/toy work/ref/cluster_family.tsv
+expansion: {jobs: 12}
+finalisation: {large_scaffold_bp: 80000000}
+anchor: {independent: true}   # three unrelated satellites: no common frame exists
+tools: {bin_dir: .}
+viewer:
+  title: "Satellite loci in the two Amazon molly haplotype assemblies (2021)"
+  species_names: {lat: "P. formosa, latipinna-derived half (GCA_013036135.2)", mex: "P. formosa, mexicana-derived half (GCA_013036085.2)"}
