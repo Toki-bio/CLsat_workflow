@@ -1,0 +1,14 @@
+set	name	length	shift	identity_pct	start	status
+families	CLsat1	146	0		AAAGAAG	own frame
+families	CLsat2	145	0		AAAGAAG	own frame
+families	CLsat3	146	0		AAAGAAG	own frame
+families	CLsat4	116	0		AAAGAAG	own frame
+subfamilies	CLsat1.1	146	36	99.3	AAAGAAG	ok
+subfamilies	CLsat1.2	146	36	91.1	AAAGAAG	ok
+subfamilies	CLsat1.3	146	36	93.2	AAAGAAG	ok
+subfamilies	CLsat1.4	146	36	88.4	AAAGAAG	ok
+subfamilies	CLsat1.5	128	18	100.0	TCTATGC	ok
+subfamilies	CLsat2	145	36	100.0	AAAGAAG	ok
+subfamilies	CLsat3.1	146	36	100.0	AAAGAAG	ok
+subfamilies	CLsat3.2	146	36	84.4	AAAGAAG	ok
+subfamilies	CLsat4	116	36	100.0	AAAGAAG	ok

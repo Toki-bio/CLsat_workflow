@@ -1,0 +1,34 @@
+stage        wired name                                           scripts
+02           no    TRF scan                                       (command in docs/files.md)
+                                                                  [needs trf]
+03           no    motif extraction                               01_discovery_clustering/Step3.sh
+                                                                  [needs gawk]
+04           no    simple-repeat filter                           01_discovery_clustering/Step4.sh
+                                                                  [needs trf, gawk]
+05           no    canonical rotation                             01_discovery_clustering/Step5.sh
+06           no    per-species clustering                         01_discovery_clustering/Step6.sh
+                                                                  [needs vsearch]
+07           no    MAFFT rotation                                 01_discovery_clustering/Step7.sh
+                                                                  [needs mafft]
+08           no    cross-species clustering                       02_seed_expansion_scan/Step8_cross_cluster.sh
+                                                                  [hand-curated input: references.rotated_consensus; needs vsearch]
+09           no    family assignment                              02_seed_expansion_scan/Step9_family_fasta.sh
+                                                                  [hand-curated input: family_assignment (cluster -> family table from UPGMA tree inspection)]
+10           no    seed BEDs                                      02_seed_expansion_scan/make_bed_from_clsats_headers.sh
+                                                                  [needs gawk]
+11           no    expansion + scan                               02_seed_expansion_scan/clisat_expand_then_scan_merged.sh
+                                                                  [needs ssearch36, samtools, bedtools, parallel]
+12           no    MASTER                                         03_master_arbitration/build_master.sh
+                                                                  [needs bedtools]
+13           no    symmetric rescan                               02_seed_expansion_scan/clisat_expand_then_scan_merged.sh
+                                                                  [needs ssearch36, samtools, bedtools, parallel]
+14           no    segmentation + arbitration                     03_master_arbitration/arbitration_patched.sh
+                                                                  [needs gawk, bedtools, python3]
+orthology    no    flank orthology                                04_flank_orthology/rebuild_ortho_segmented.py
+                                                                  [needs ssearch36, samtools, python3]
+subfamily    no    sub-subfamily, terminal monomers, phase        06_catalogue_finalize/subfamily_rerun/run_extract.sh, 05_subfamily_terminal_boundary/assign_subfamily.sh, 05_subfamily_terminal_boundary/terminal_monomers.sh, 05_subfamily_terminal_boundary/boundary_phase.sh, 05_subfamily_terminal_boundary/build_subfam_term_json.py
+                                                                  [optional; hand-curated input: subfamily.consensuses (subx/); needs ssearch36, samtools]
+finalisation no    large-scaffold recovery, edge refinement, re-arbitration 06_catalogue_finalize/85mb_recovery/run_chunked.sh, 06_catalogue_finalize/edge_refine/run_refine_edges_parallel.sh, 06_catalogue_finalize/rearbitration/arbitration_540.sh
+                                                                  [optional; hand-curated input: manual_loci; needs trf, ssearch36, parallel]
+post         no    post-catalogue checks                          07_post_catalogue/singleton_screen.sh, 07_post_catalogue/candidate_scan.py, 07_post_catalogue/make_fig2_from_data.py
+                                                                  [optional; needs ssearch36]

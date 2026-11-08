@@ -1,6 +1,0 @@
-run_name: t1
-out_dir: out
-genomes:
-  spa: g/a.fa
-  spb: g/b.fa
-family_assignment: ref/assign.tsv

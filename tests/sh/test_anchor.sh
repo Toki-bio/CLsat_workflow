@@ -2,9 +2,10 @@
 # WP9: anchor phasing in bash/gawk (lib/satpipe/anchor.awk, anchor.sh).
 #  A  the 21 cases of tests/test_anchor.py (6 tests, 16 of them parametrised rotations), through `satpipe anchor` (anchor_cli)
 #  B  stage 21_anchor (st_21_anchor/plan_21_anchor with a minimal STUB of the WP3/WP5 driver functions, defined below)
-#     against Python's st_anchor + plan (tests/port/anchor_stage_oracle.py): files, say line, manifest, outputs, plan hash, errors
+#     against golden output of Python's st_anchor + plan (tests/sh/golden/anchor/, made at tag python-driver-final by
+#     tests/port/anchor_stage_oracle.py): files, say line, manifest, outputs, plan hash, errors
 #  C  the manuscript's 9 sub-subfamily consensuses re-rotate to fig1b_rotated.fasta (HANDOFF.md:216-219)
-# Usage: tests/sh/test_anchor.sh      env: PYTHON (default python3), MANUSCRIPT_DIR (default C:/work/CLsat/manuscript)
+# Usage: tests/sh/test_anchor.sh      env: MANUSCRIPT_DIR (default C:/work/CLsat/manuscript)
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$HERE/../.." && pwd)
@@ -13,7 +14,7 @@ source "$ROOT/lib/satpipe/flat.sh"
 source "$ROOT/lib/satpipe/done.sh"
 source "$ROOT/lib/satpipe/anchor.sh"
 require_gawk
-PY=${PYTHON:-python3}
+GOLDA=$ROOT/tests/sh/golden/anchor
 MS=${MANUSCRIPT_DIR:-C:/work/CLsat/manuscript}
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/satpipe_wp9t.XXXXXX")
 trap 'rm -rf -- "$TMP"' EXIT
@@ -106,8 +107,7 @@ fa "$TMP/dup.fa" CLsat1.1 ACGT
 
 stage_case_json() {   # like stage_case on an existing $TMP/st_NAME.json
     local name=$1 c=$TMP/st_$1
-    json_to_flat "$TMP/st_$name.json" > "$TMP/st_$name.flat"; CFG_FLAT=$TMP/st_$name.flat; mkdir -p "$c/py" "$c/sh"
-    PYTHONIOENCODING=utf-8 "$PY" "$ROOT/tests/port/anchor_stage_oracle.py" "$TMP/st_$name.json" "$c/py" | tr -d '\r' > "$c/py.out"
+    json_to_flat "$TMP/st_$name.json" > "$TMP/st_$name.flat"; CFG_FLAT=$TMP/st_$name.flat; mkdir -p "$c/sh"
     (   RUN=$c/sh PLAN_INPUTS=$c/inputs PLAN_PARAMS=$c/params STAGE_OUTPUTS=$c/outputs; : > "$PLAN_INPUTS"; : > "$PLAN_PARAMS"; : > "$STAGE_OUTPUTS"
         plan_21_anchor
         printf 'PLAN_HASH\t%s\n' "$(params_hash "$PLAN_PARAMS")"
@@ -116,10 +116,9 @@ stage_case_json() {   # like stage_case on an existing $TMP/st_NAME.json
         sed 's/^/SAY\t/' "$c/say.txt"
         printf 'MANIFEST\t'; json_to_flat "$RUN/manifest_anchor.json" > "$c/m.flat"; flat_json "$c/m.flat"; echo
         sed 's/^/OUTPUT\t/' "$STAGE_OUTPUTS"
-    ) | sed "s#$c/sh#$c/py#g" > "$c/sh.out"
-    gawk -F '\t' -v OFS='\t' '$1 == "ERROR" { print $1, $3; next } { print }' "$c/py.out" > "$c/py.cmp"
-    diff "$c/py.cmp" "$c/sh.out" || return 1
-    if [ -d "$c/py/anchored" ]; then diff -r --strip-trailing-cr "$c/py/anchored" "$c/sh/anchored" || return 1; fi
+    ) | sed "s#$c/sh#@RUN@#g; s#$TMP#@TMP@#g; s#$CONS#@CONS@#g; s#^PLAN_HASH	.*#PLAN_HASH	@HASH@#" > "$c/sh.out"   # params hold machine paths
+    diff "$GOLDA/$name.out" "$c/sh.out" || return 1
+    if [ -d "$GOLDA/$name.anchored" ]; then diff -r --strip-trailing-cr "$GOLDA/$name.anchored" "$c/sh/anchored" || return 1; fi
     return 0
 }
 stage_case() { mkcfg "st_$1" "$2" "$3"; stage_case_json "$1"; }   # stage_case NAME MOTIF_JSON EXTRA_JSON
@@ -128,7 +127,7 @@ check "stage: sub-subfamilies from a directory (.anchored./non-FASTA skipped, do
 check "stage: independent families (own frame, subs onto their family)" stage_case indep '""' ", \"subfamily\": {\"members\": $MEM, \"consensuses\": \"$TMP/subs.fa\"}"
 indep_true() { sed 's/"independent": false/"independent": true/' "$TMP/st_indep.json" > "$TMP/st_indep2.json"; stage_case_json indep2; }
 check "stage: independent: true" indep_true
-errcase() { stage_case "$@" && grep -q '^ERROR' "$TMP/st_$1/py.out"; }
+errcase() { stage_case "$@" && grep -q '^ERROR' "$GOLDA/$1.out"; }
 check "stage error: subfamily.consensuses not found" errcase miss '"AAAGAAG"' ", \"subfamily\": {\"members\": null, \"consensuses\": \"$TMP/nowhere.fa\"}"
 cat "$TMP/subs.fa" "$TMP/dup.fa" > "$TMP/subdir2.fa"; mkdir -p "$TMP/dupdir"; cp "$TMP/subs.fa" "$TMP/dupdir/1.fa"; cp "$TMP/dup.fa" "$TMP/dupdir/2.fa"
 check "stage error: record appears twice (one file: ValueError text)" errcase dup1 '"AAAGAAG"' ", \"subfamily\": {\"members\": null, \"consensuses\": \"$TMP/subdir2.fa\"}"
@@ -137,7 +136,7 @@ check "stage error: listed sub-subfamily without a record" errcase lost '"AAAGAA
 check "stage error: motif absent from the anchor (AnchorError)" errcase nomo '"CCCCCCCCCC"' ""
 check "stage error: ambiguous motif (AnchorError)" errcase amb '"TTTG"' ""
 fa "$TMP/junkfam.fa" junk "$JUNK"
-junkfam() { mkcfg st_jf '"AAAGAAG"' ""; sed -i "s#$CONS/CLsat3.cons.fa#$TMP/junkfam.fa#" "$TMP/st_jf.json"; stage_case_json jf && grep -q '^ERROR' "$TMP/st_jf/py.out"; }
+junkfam() { mkcfg st_jf '"AAAGAAG"' ""; sed -i "s#$CONS/CLsat3.cons.fa#$TMP/junkfam.fa#" "$TMP/st_jf.json"; stage_case_json jf && grep -q '^ERROR' "$GOLDA/jf.out"; }
 check "stage error: a family cannot be placed (AnchorError lists it)" junkfam
 nofam() { mkcfg st_nf '""' ""; sed -i 's/"family": "CLsat1"/"family": null/' "$TMP/st_nf.json"; stage_case_json nf; }
 check "stage: anchor.family null -> first family, no motif" nofam

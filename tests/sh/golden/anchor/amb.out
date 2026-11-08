@@ -1,0 +1,6 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat1.cons.fa
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@CONS@/CLsat3.cons.fa
+INPUT	@CONS@/CLsat4.cons.fa
+ERROR	anchor motif TTTG occurs more than once in the anchor consensus at equal quality (positions 21 and 42): the frame is ambiguous

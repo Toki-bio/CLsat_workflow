@@ -1,0 +1,7 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat1.cons.fa
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@CONS@/CLsat3.cons.fa
+INPUT	@CONS@/CLsat4.cons.fa
+INPUT	@TMP@/subs.fa
+ERROR	21_anchor: sub-subfamilies listed in subfamily.members without a consensus record: CLsat9.9, X

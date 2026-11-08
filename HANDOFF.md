@@ -84,6 +84,17 @@ Owner decisions already taken, do not reopen: `SEG_SHORT=drop` is the published 
     Chrome (3 families, 2 assemblies, lists 9/0/34, no script errors). `cross/cluster_report.tsv` shows what the
     curator step is for: cluster 1 (4 mex members, 252 bp, 99.2 % identical to MolSat3) is a second MolSat3
     cluster left unassigned by the automatic table.
+- 2026-11-09 — **driver switched to bash + gawk** (owner, 2026-11-08: convert run.py and schema.py to bash/awk;
+  2026-11-09: approves the switch-over). `bin/satpipe` + `lib/satpipe/` replace the Python driver (run.py, config.py,
+  schema.py, check.py, tools.py, cli.py, anchor.py, viewer.py, viewer_lists.py, stages/__init__.py, deleted). The stage
+  scripts are unchanged. Equivalence was proven before deletion (log: CLsat review `satpipe_bash_port/PORT_LOG.md`):
+  every stage's commands, outputs, DONE markers and manifest identical on the toy (default, manual loci, seeds, same
+  contig names, hapdup, flank-single-copy rules on and off), molly (716 data files), the Darevskia traces (139), and
+  the same 22 rerun decisions on the final catalogue run_z3; stages 16-20 incl. every stage-19 option group and error
+  on fake scripts; config/check/anchor/viewer differential tests. The Python driver and the equivalence harness
+  (tests/port/) are at tag `python-driver-final`; `run.py:N` references in lib/satpipe comments refer to that tag.
+  The parameter schema is now `lib/satpipe/schema.tsv` (edit it directly; `satpipe config --schema-doc > docs/config.md`).
+  Driver needs: bash >= 4, gawk, jq; POSIX hosts only.
 
 ## The pipeline as it is
 
@@ -196,7 +207,7 @@ Decisions the owner must make before or during the refactor:
 
 - [x] Repository layout — **decided 2026-10-15 by the owner: the tool replaces `CLsat_workflow` in place.** The deposit is frozen as tag `manuscript-deposit` (= former `main` @ `80dd458`); stage scripts moved with `git mv` to `satpipe/stages/`; superseded code in `legacy/`. The GitHub repository name is unchanged (renaming is still open; GitHub redirects a renamed repository).
 - [ ] Tool name and licence (none declared today; README says "academic and research use").
-- [x] Driver — **decided 2026-10-15 by the owner: plain Python stage runner** (one function per stage calling the existing script; DONE markers with input checksums; manifest). A Snakemake file can be layered on the same stage functions later if a cluster version is ever wanted.
+- [x] Driver — **2026-11-09: bash + gawk (`bin/satpipe`), owner's instruction 2026-11-08, replacing** the decision of 2026-10-15 (plain Python stage runner; at tag `python-driver-final`). Original entry: (one function per stage calling the existing script; DONE markers with input checksums; manifest). A Snakemake file can be layered on the same stage functions later if a cluster version is ever wanted.
 - [ ] Whether the viewer stays a single file or splits into `index.html` + `viewer.js` + `viewer_config.json` (single file is a feature for deployment; a separate config is needed either way).
 - [x] Second test organism — **decided 2026-10-15 by the owner: the Amazon molly, *Poecilia formosa*.** The
   CLsat-revision session already ran TRF (`2 5 7 80 10 50 2000 -h`) and workflow Steps 3-8 on the two 2021

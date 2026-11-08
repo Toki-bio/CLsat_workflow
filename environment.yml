@@ -1,13 +1,13 @@
 # conda environment with every external tool satpipe calls (versions of the published run where
 # the channel still has them; newer builds are fine, ssearch36 bit scores vary between runs anyway).
-#   conda env create -f environment.yml && conda activate satpipe && pip install -e .
+#   conda env create -f environment.yml && conda activate satpipe && export PATH=$PWD/bin:$PATH
+# The driver (bin/satpipe) is bash + gawk + jq; python3 runs the Python stage scripts only.
 name: satpipe
 channels:
   - conda-forge
   - bioconda
 dependencies:
   - python>=3.10
-  - pyyaml
   - pytest
   - trf>=4.09
   - vsearch>=2.22
@@ -18,5 +18,7 @@ dependencies:
   - samtools>=1.12
   - bedtools>=2.30
   - parallel
+  - minimap2          # stage 16 hapdup rule, stage 19 copy test / repeat mask
+  - jq
   - gawk
   - bc

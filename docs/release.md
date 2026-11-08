@@ -2,8 +2,8 @@
 
 1. Decide the two things still open in HANDOFF.md: the tool name (rename this repository or keep
    `CLsat_workflow`; GitHub redirects the old URL) and the licence (write `LICENSE`, set `license`
-   in `CITATION.cff` and `pyproject.toml`).
-2. Bump `version` in `pyproject.toml`, `satpipe/__init__.py` and `CITATION.cff`; set `date-released`.
+   in `CITATION.cff`).
+2. Bump the version in `lib/satpipe/VERSION` and `CITATION.cff`; set `date-released`.
 3. Make sure CI is green (`.github/workflows/ci.yml`: unit tests without tools; toy equivalence and
    driver tests in the conda environment).
 4. Tag: `git tag -a v0.1.0 -m "satpipe v0.1.0" && git push origin v0.1.0`, then create the GitHub release
@@ -16,9 +16,10 @@
 
 Regenerating the published viewer after a data change in Toki-bio/CLsat-viewer:
 
-    python tests/viewer/make_config_from_viewer_dir.py <viewer clone> <viewer clone>/viewer_meta.json
+    satpipe viewer <run dir>
 
-and commit `viewer_config.json`. After a change to the page, re-vendor it:
+and copy the viewer directory into the clone. (The one-time migration helper
+`tests/viewer/make_config_from_viewer_dir.py` is at tag `python-driver-final`.) After a change to the page, re-vendor it:
 
     python tools/patch_viewer_config.py <pristine v2.25 index.html> satpipe/viewer_html/index.html
     node tests/viewer/cdp_test.js <viewer dir> 18931

@@ -22,25 +22,26 @@ original directory names; `git log --follow` gives their history.
 | part | state |
 |---|---|
 | stage scripts | in `satpipe/stages/`, parameterised: inputs from arguments and small tables (`genomes.tsv`, `families.tsv`, `members.tsv`), parameters from environment variables with the published values as defaults; no server path, species code, family name or monomer length in code ([PROVENANCE.md](PROVENANCE.md)); equivalence with the original scripts verified on a synthetic project (`tests/toy/`) |
-| `config.yaml` schema | done: `satpipe/schema.py`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
+| `config.yaml` schema | done: `lib/satpipe/schema.tsv`, reference in [docs/config.md](docs/config.md); every hard-coded parameter is a key with the published value as default |
 | `satpipe check` | done: schema, cross-key checks, input files, external tools with versions |
 | `satpipe run` | done: 21 stages from TRF to anchor phasing, resumable (DONE markers), `manifest.json`; `--from/--to/--only/--force` |
 | `satpipe viewer` | done: assembles `<run>/viewer/` (data files + `viewer_config.json` + the config-driven page) |
 | Darevskia regression | running on therioserver from the six GenBank assemblies (`configs/darevskia_clsat_therioserver.yaml`); see HANDOFF.md progress log |
 | second test case | Amazon molly (`tests/molly/run_molly.sh`), running |
-| tests | `pytest` (no tools); `tests/toy/` equivalence + driver tests (tools); `tests/viewer/` list rebuild + headless-Chrome page test; CI in `.github/workflows/ci.yml` |
+| driver | bash + gawk (`bin/satpipe`, `lib/satpipe/`) since 2026-11-09; it replaced the Python driver after an equivalence proof (same commands, files and rerun decisions on the toy, molly, Darevskia and the final catalogue); the Python driver is at tag `python-driver-final` |
+| tests | `tests/run_all.sh` (stage-script pytest + bash driver tests, no tools); `tests/toy/` equivalence + driver tests (tools); `tests/viewer/` headless-Chrome page test; CI in `.github/workflows/ci.yml` |
 
 ## Install
 
 ```bash
 git clone https://github.com/Toki-bio/CLsat_workflow && cd CLsat_workflow
-python3 -m pip install -e ".[test]"      # Python >= 3.10, PyYAML
+export PATH=$PWD/bin:$PATH               # the driver: bash >= 4, gawk, jq (POSIX servers; not Windows)
 satpipe --version
-python3 -m pytest
+bash tests/run_all.sh                    # python3 + pytest for the Python stage scripts
 ```
 
 The pipeline itself needs TRF, VSEARCH, MAFFT, FASTA (`ssearch36`), samtools, bedtools, GNU
-parallel, `gawk` (not mawk) and, for optional stages, EMBOSS and BLAST+. `satpipe check` reports
+parallel, minimap2, `gawk` (not mawk), `jq`, python3 (stage scripts) and, for optional stages, EMBOSS and BLAST+. `satpipe check` reports
 which are missing and which stages they block.
 
 ## Use
@@ -86,7 +87,8 @@ directory. Unknown keys are errors.
 ## Layout
 
 ```
-satpipe/            Python package: cli, config, schema, check, tools, stages registry
+bin/satpipe         the driver (bash): check, config, run, viewer, anchor, stages
+lib/satpipe/        driver library (bash + gawk); schema.tsv = every config key, stages_registry.tsv, run_stages.tsv
 satpipe/stages/     the stage scripts, by original directory (01_ ... 07_); consensuses and
                     the curated cluster_family.tsv are in 02_seed_expansion_scan/
 configs/            darevskia_clsat.yaml (regression target), example_minimal.yaml
@@ -95,7 +97,7 @@ legacy/             superseded code kept for provenance (not current)
 viewer/             pointer to the viewer repository; data-product -> producer table
 docs/config.md      generated schema reference
 docs/files.md       intermediate files per stage (columns, coordinate frames)
-tests/              pytest suite (synthetic data)
+tests/              run_all.sh: stage-script pytest + tests/sh/ driver tests (synthetic data)
 PIPELINE.md         scientific record: reproduction report, changes after it
 HANDOFF.md          mission, conventions, target design, ordered work plan, do-not list
 PROVENANCE.md       what moved where; the manuscript-deposit tag

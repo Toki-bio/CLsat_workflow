@@ -1,0 +1,8 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@CONS@/CLsat1.cons.fa
+SAY	  anchor CLsat2 (AAAGAAGCTCAT...): 2 consensus records in frame, 0 needed rotation
+MANIFEST	{"family": "CLsat2", "frame_start": "AAAGAAGCTCATTGGGATGT", "motif": "", "records": 2, "rotated": 0}
+OUTPUT	@RUN@/anchored/families.anchored.fa
+OUTPUT	@RUN@/anchored/anchor_report.tsv
+OUTPUT	@RUN@/anchored/anchor_frame.fa

@@ -1,0 +1,6 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat1.cons.fa
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@TMP@/junkfam.fa
+INPUT	@CONS@/CLsat4.cons.fa
+ERROR	anchor phasing failed:\n  CLsat3: cannot place the sequence on the anchor (aligned 13 columns, 85% identity)

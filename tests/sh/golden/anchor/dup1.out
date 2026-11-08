@@ -1,0 +1,7 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat1.cons.fa
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@CONS@/CLsat3.cons.fa
+INPUT	@CONS@/CLsat4.cons.fa
+INPUT	@TMP@/subdir2.fa
+ERROR	@TMP@/subdir2.fa: record name CLsat1.1 appears twice

@@ -1,0 +1,7 @@
+PLAN_HASH	@HASH@
+INPUT	@CONS@/CLsat1.cons.fa
+INPUT	@CONS@/CLsat2.cons.fa
+INPUT	@CONS@/CLsat3.cons.fa
+INPUT	@CONS@/CLsat4.cons.fa
+INPUT	@TMP@/dupdir
+ERROR	21_anchor: sub-subfamily record CLsat1.1 appears twice (@TMP@/dupdir/2.fa)

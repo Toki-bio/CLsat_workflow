@@ -25,7 +25,7 @@ _SATPIPE_CONFIG_SH=1
 SATPIPE_SCHEMA_TSV=${SATPIPE_SCHEMA_TSV:-$SATPIPE_LIB/schema.tsv}   # test hook: another branch's schema.tsv
 
 # Names of satpipe/tools.py TOOLS (the cross-check `tools.<k>: not a known tool`), column 1 of tools.tsv (WP4);
-# tests/port/golden_config.sh checks it against tools.py.
+# (checked against tools.py by tests/port/golden_config.sh at tag python-driver-final).
 config_known_tools() {
     "$GAWK" -F '\t' '!/^#/ && $1 != "" { printf "%s%s", (n++ ? " " : ""), $1 }' "$SATPIPE_LIB/tools.tsv"
 }
