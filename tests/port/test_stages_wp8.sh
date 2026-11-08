@@ -157,8 +157,9 @@ step() {   # step NAME [VAR=value ...] -- satpipe-args...
     for k in rc stdout stderr trace; do
         if [ $k = stderr ] && [ "${TRACEBACK:-0}" = 1 ]; then
             # Python raises a non-StageError (traceback); bash prints `satpipe run: <its message>`
-            diff <(tail -n 1 "$W/out/$name.py.stderr" | sed -E 's/^[A-Za-z_.]*(Error|Exception): //') \
-                 <(sed -E 's/^satpipe run: //' "$W/out/$name.sh.stderr") > "$W/out/$name.diff.$k" || ok=0
+            # unpack messages: Python 3.14 adds ", got N" (3.13 does not); compare without it
+            diff <(tail -n 1 "$W/out/$name.py.stderr" | sed -E 's/^[A-Za-z_.]*(Error|Exception): //; s/(\(expected [0-9]+), got [0-9]+\)/\1)/') \
+                 <(sed -E 's/^satpipe run: //; s/(\(expected [0-9]+), got [0-9]+\)/\1)/' "$W/out/$name.sh.stderr") > "$W/out/$name.diff.$k" || ok=0
             continue
         fi
         if ! diff <(mask < "$W/out/$name.py.$k") <(mask < "$W/out/$name.sh.$k") > "$W/out/$name.diff.$k"; then ok=0; fi

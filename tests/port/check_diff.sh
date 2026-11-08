@@ -66,7 +66,8 @@ pair() {
 MODES=("--no-files --no-tools" "--no-files --no-tools --json" "--no-tools" "--no-files" "")
 group_configs() {
     local f rel m; local -a cf=()
-    local gen=tests/port/_gen_wp4_${CONFIGS_PART//\//_}
+    local cp=${CONFIGS_PART:-}                    # unset under set -u would abort
+    local gen=tests/port/_gen_wp4_${cp//\//_}
     "$PY" "$ROOT/tests/port/make_yaml_fixtures.py" "$ROOT/$gen" >/dev/null || bad "make_yaml_fixtures.py"
     for f in "$ROOT"/configs/*.yaml "$ROOT"/tests/port/yaml_fixtures/*/*.yaml "$ROOT"/tests/port/bad/*.yaml "$ROOT/$gen"/*.yaml; do cf+=("${f#"$ROOT/"}"); done
     if [ -n "${CONFIGS_PART:-}" ]; then          # i/n: every n-th config from the i-th (parallel runs)

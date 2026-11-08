@@ -23,7 +23,9 @@ st_02b_large() {
           TRF_TIMEOUT="$(cfg finalisation/trf_timeout)" MIN_PIECE_BP="$(cfg finalisation/min_piece_bp)" JOBS="$(cfg expansion/jobs)")
     for row in "${rows[@]}"; do
         IFS=$'\t' read -r code scf ln j <<< "$row" || true
-        if [ -n "$j" ]; then stage_die "ValueError: too many values to unpack (expected 3)"; fi
+        if [ -n "$j" ]; then   # Python >= 3.14 wording (3.13 omits ", got N")
+            local nf; nf=$(printf '%s\n' "$row" | gawk -F '\t' '{print NF}')
+            stage_die "ValueError: too many values to unpack (expected 3, got $nf)"; fi
         d=$(ctx_d large "$code" "$scf")
         log=02b_large_${code}_$scf
         sh_run 02b_large "" log_name="$log" "${envs[@]}" -- \

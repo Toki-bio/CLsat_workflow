@@ -94,7 +94,7 @@ _p8_candidates_table() {
                 if (!c) { close(o); printf "not enough values to unpack (expected 2, got 1)"; exit 1 }
                 scf = substr(reg, 1, RSTART - 1); coords = substr(reg, RSTART + 1)
                 nc = split(coords, se, "-")
-                if (nc != 2) { close(o); printf (nc < 2 ? "not enough values to unpack (expected 2, got %d)" : "too many values to unpack (expected 2)"), nc; exit 1 }
+                if (nc != 2) { close(o); printf (nc < 2 ? "not enough values to unpack (expected 2, got %d)" : "too many values to unpack (expected 2, got %d)"), nc; exit 1 }   # Python >= 3.14 wording (3.13 omits ", got N")
                 printf "C%d\t%s\t%s\t%s\t%s\n", i, parts[1], scf, se[1], se[2] > o
             }
             close(o)
