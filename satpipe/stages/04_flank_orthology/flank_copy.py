@@ -210,3 +210,19 @@ def drop_calls_in_loci(calls, loci_iv, frac=0.5):
         if inside < frac * (b - a + 1):
             out.append((a, b))
     return out
+
+
+def new_mask_runs(prev, cur, side, fs, fe):
+    """Letters masked (N) in `cur` but not in `prev`, as genomic 1-based inclusive runs [[a, b], ...] sorted.
+    prev / cur: the same flank, oriented array->outward (an L flank is the reverse complement of genome fs..fe);
+    for the viewer, which draws the flank on the plus strand."""
+    assert len(prev) == len(cur) == fe - fs + 1, 'flank length differs from its window'
+    pos = sorted(fs + j if side == 'R' else fe - j
+                 for j, (p, c) in enumerate(zip(prev, cur)) if c in 'Nn' and p not in 'Nn')
+    runs = []
+    for x in pos:
+        if runs and x == runs[-1][1] + 1:
+            runs[-1][1] = x
+        else:
+            runs.append([x, x])
+    return runs

@@ -980,6 +980,14 @@ def st_orthology(ctx: Ctx):
         cmd += ['--clear-margin', o['clear_margin']]
         if o['reciprocal']:
             cmd += ['--reciprocal']
+    if o['repeat_mask']:
+        if not (o['single_copy'] and o['tandem_mask']):
+            raise StageError('19_orthology: orthology.repeat_mask needs single_copy and tandem_mask')
+        cmd += ['--repeat-mask', '--mask-min-aln', o['mask_min_aln']]
+        if o['extend_steps']:
+            cmd += ['--extend-steps', ','.join(str(x) for x in o['extend_steps'])]
+    elif o['extend_steps']:
+        raise StageError('19_orthology: orthology.extend_steps needs repeat_mask')
     ctx.sh(cmd, '19_orthology')
     pairs = sum(1 for _ in open(os.path.join(out, 'ortho_pairs.tsv'))) - 1
     ctx.manifest['ortholog_pairs'] = pairs

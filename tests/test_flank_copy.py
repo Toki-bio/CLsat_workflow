@@ -180,3 +180,17 @@ def test_drop_calls_in_loci():
     # the arrays and the bridge across the gap go; a call reaching 300 letters into the flank and a call
     # inside the gap stay
     assert FC.drop_calls_in_loci(calls, loci) == [(66100, 66500), (62300, 62400)]
+
+
+def test_new_mask_runs_plus_strand():
+    # R flank, genome 101..110; letters 3-4 and 8 newly masked, letter 1 was masked already
+    assert FC.new_mask_runs('NACGTACGTA', 'NANNTACNTA', 'R', 101, 110) == [[103, 104], [108, 108]]
+
+
+def test_new_mask_runs_left_flank_is_reverse():
+    # L flank oriented outward = reverse complement of genome 101..110: oriented letter j is genome 110 - j
+    assert FC.new_mask_runs('ACGTACGTAC', 'NNGTACGTAN', 'L', 101, 110) == [[101, 101], [109, 110]]
+
+
+def test_new_mask_runs_nothing_new():
+    assert FC.new_mask_runs('ACNN', 'ACNN', 'R', 1, 4) == []

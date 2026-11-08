@@ -22,7 +22,10 @@ def test_defaults_are_published_values(project):
                               # single-copy anchors: not in the published run (author 2026-11-08); the published
                               # configs set tandem_mask/single_copy false, clear_margin 0, reciprocal false
                               "tandem_mask": True, "single_copy": True, "copy_min_pid": 80.0, "copy_min_aln": 0,
-                              "clear_margin": 0.9, "reciprocal": True}
+                              "clear_margin": 0.9, "reciprocal": True,
+                              # repeat mask + extend on demand: the owner's rule 2026-11-08 (ext without joint);
+                              # the published configs set repeat_mask false, extend_steps []
+                              "repeat_mask": True, "mask_min_aln": 100, "extend_steps": [600, 3000, 5000]}
     assert x["subfamily"]["confident_delta"] == 10.0
     assert x["scan"] == {"win_mono": 2, "step_mono": 1, "min_bits": 0.0}
 

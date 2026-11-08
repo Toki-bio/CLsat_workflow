@@ -166,6 +166,17 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "reciprocal": F("bool", default=True,
                         doc="Keep a pair only if each locus is the other's clear best hit (one-way hits are listed in "
                             "ortho/ortho_oneway.tsv). Needs clear_margin > 0."),
+        "repeat_mask": F("bool", default=True,
+                         doc="Instead of dropping a flank that is not single copy, mask (N) its pieces >= mask_min_aln letters "
+                             "that have another copy in the own genome (minimap2), and its catalogue-satellite pieces; the flank "
+                             "anchors on the letters left; fewer than min_aln left = class 'masked' (author's decision "
+                             "2026-11-08). Needs single_copy and tandem_mask."),
+        "mask_min_aln": F("int", default=100, min=1, doc="Shortest repeated piece that repeat_mask masks."),
+        "extend_steps": F("list", default=[600, 3000, 5000], item=F("int", min=1),
+                          doc="Extend on demand: flanks still unresolved (tandem / masked / satellite / low-complexity / "
+                              "telomeric) are retried at the next length; a flank stops at the middle of the gap to the next "
+                              "locus. [] = one length, flank_bp. Needs repeat_mask. The owner's rule 2026-11-08: "
+                              "[600, 3000, 5000]."),
     }),
     "subfamily": F("block", doc="Sub-subfamily assignment at array boundaries.", fields={
         "consensuses": F("path",

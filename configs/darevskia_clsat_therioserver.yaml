@@ -64,4 +64,4 @@ viewer:
 discovery: {monomerize: false}
 
 # published behaviour for this regression run: the 2026-11-08 single-copy flank rules are off
-orthology: {tandem_mask: false, single_copy: false, clear_margin: 0, reciprocal: false}
+orthology: {tandem_mask: false, single_copy: false, clear_margin: 0, reciprocal: false, repeat_mask: false, extend_steps: []}

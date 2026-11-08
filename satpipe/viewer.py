@@ -19,7 +19,7 @@ import sys
 from . import __version__
 from .config import Config
 from .run import Ctx, _expand_cmd, read_tsv
-from .viewer_lists import build_lists, read_assign, read_master
+from .viewer_lists import build_lists, read_assign, read_master, read_pairs
 
 VENDORED_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'viewer_html', 'index.html')
 PALETTE = ['#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', '#f87171', '#2dd4bf', '#fb923c', '#c084fc', '#4ade80']
@@ -173,6 +173,10 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                            'LF': dict(fl['LF'], **{'class': 'candidate'}), 'RF': dict(fl['RF'], **{'class': 'candidate'})}
     json.dump(flanks, open(os.path.join(out, 'flanks.json'), 'w'), separators=(',', ':'))
     shutil.copyfile(os.path.join(ortho, 'flank_orthologs.json'), os.path.join(out, 'flank_orthologs.json'))
+    o = cfg.data['orthology']
+    decided = o['clear_margin'] > 0          # stage 19 chose pairs (clear best, reciprocal); else the published rule
+    if decided:
+        shutil.copyfile(os.path.join(ortho, 'ortho_pairs.tsv'), os.path.join(out, 'ortho_pairs.tsv'))
     subfam = {}
     for name in ('subfamily.json', 'terminal_monomers.json'):
         p = os.path.join(reg, name)
@@ -205,7 +209,8 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
     master = read_master(os.path.join(out, 'MASTER.merged.bed'))
     assign = read_assign(os.path.join(out, 'MASTER.final_assignment.clean.tsv'))
     ortho_json = json.load(open(os.path.join(out, 'flank_orthologs.json')))
-    ol, fl_list, full = build_lists(master, assign, flanks, ortho_json, subfam)
+    ol, fl_list, full = build_lists(master, assign, flanks, ortho_json, subfam,
+                                    pairs=read_pairs(os.path.join(out, 'ortho_pairs.tsv')) if decided else None)
     sub = cfg.data.get('subfamily') or {}
     subfamilies = {}
     cdir = sub.get('consensuses')
@@ -226,7 +231,30 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
     n_cand = sum(1 for r in master if r[0].startswith('C'))
     n_flag = sum(1 for r in fl_list if not r['id'].startswith('C'))
     n_contra = sum(1 for r in fl_list if r['cat'] == 'UNIQUE_SEED_CONTRADICTION')
-    o = cfg.data['orthology']
+    if decided:
+        steps = o['extend_steps'] if o['repeat_mask'] and o['extend_steps'] else [o['flank_bp']]
+        rule = ('Positional orthology from flanking sequence: flanks of %s letters%s; %s%severy anchor flank single '
+                'copy in its own genome (>=%g%% identity); a pair = clear best hit in the target assembly (second < %g x '
+                'best bits)%s, >=%g%% identity over >=%d letters.'
+                % (' / '.join('{:,}'.format(x) for x in steps),
+                   ' (a longer flank only where the shorter one was unresolved; never past the middle of the gap to the '
+                   'next locus)' if len(steps) > 1 else '',
+                   'tandem-repeat letters (TRF) masked; ' if o['tandem_mask'] else '',
+                   'satellite pieces and pieces >=%d letters with another copy in the own genome masked (N); '
+                   % o['mask_min_aln'] if o['repeat_mask'] else '',
+                   o['copy_min_pid'], o['clear_margin'], ', both ways' if o['reciprocal'] else '',
+                   o['min_pid'], o['min_aln']))
+        note_ortho = rule + ' "Orthologous to" lists these pairs only: distinct partner assemblies, then partner loci.'
+        note_full = ('Every locus (%d, all %d assemblies) with its sub-subfamily call and both flanks\' class. Ortholog = '
+                     'a decided pair (rule in the Orthologous loci tab); the L/R partner columns show the best raw hit '
+                     'of each flank as evidence.' % (n_cat, len(codes)))
+    else:
+        note_ortho = ('Positional orthology from unique flanking sequence (>=%g%% identity, >=%d bp), single best hit per '
+                      'target assembly. "Orthologous to" lists distinct partner assemblies then the total partner-locus '
+                      'count.' % (o['min_pid'], o['min_aln']))
+        note_full = ('Every locus (%d, all %d assemblies) with its sub-subfamily call and both flanks\' cross-assembly '
+                     'orthology status (ssearch36, >=%g%% identity, >=%d bp, single best hit per target assembly). L/R '
+                     'badges show each flank\'s class.' % (n_cat, len(codes), o['min_pid'], o['min_aln']))
     config = {
         'generator': 'satpipe %s' % __version__,
         'title': view.get('title') or '%s locus viewer' % cfg.data['run_name'],
@@ -240,22 +268,19 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
         'sat_bits': cfg.data['expansion']['min_bits'],
         'edge_tol': cfg.data['finalisation']['edge_tol'],
         'flank_view': flank_view,
-        'orthology': {'min_pid': o['min_pid'], 'min_aln': o['min_aln'], 'flank_bp': o['flank_bp']},
+        'orthology': {'min_pid': o['min_pid'], 'min_aln': o['min_aln'], 'flank_bp': o['flank_bp'], 'decided_pairs': decided,
+                      'n_pairs': sum(1 for _ in open(os.path.join(out, 'ortho_pairs.tsv'))) - 1 if decided else None},
         'counts': {'catalogue_loci': n_cat, 'candidates': n_cand, 'flagged': n_flag, 'contradictions': n_contra,
                    'anchorable': len(ol), 'with_ortholog': sum(1 for r in ol if r['n'] > 0)},
         'lists': {'ortho': ol, 'flagged': fl_list, 'full': full},
         'notes': {
-            'ortho': 'Positional orthology from unique flanking sequence (>=%g%% identity, >=%d bp), single best hit per target '
-                     'assembly. "Orthologous to" lists distinct partner assemblies then the total partner-locus count.'
-                     % (o['min_pid'], o['min_aln']),
+            'ortho': note_ortho,
             'flag': '%d catalogue loci annotated by arbitration%s. Only %d %s a seed/rescan contradiction (the rescan scored another '
                     'family >=%g bits above the seed; the seed family is retained). The rest are close-margin calls (segment or '
                     'seed-conflict resolved with a margin below %g bits) or loci without a seed.'
                     % (n_flag, (', plus the %d uncatalogued candidates (not catalogue members)' % n_cand) if n_cand else '',
                        n_contra, 'is' if n_contra == 1 else 'are', cfg.data['arbitration']['delta'], cfg.data['arbitration']['delta_ambig']),
-            'full': 'Every locus (%d, all %d assemblies) with its sub-subfamily call and both flanks\' cross-assembly orthology '
-                    'status (ssearch36, >=%g%% identity, >=%d bp, single best hit per target assembly). L/R badges show each '
-                    'flank\'s class.' % (n_cat, len(codes), o['min_pid'], o['min_aln']),
+            'full': note_full,
         },
     }
     json.dump(config, open(os.path.join(out, 'viewer_config.json'), 'w'), separators=(',', ':'))

@@ -78,7 +78,8 @@ arbitration:
 
 # published behaviour: no tandem mask, no single-copy test, best hit with first-wins ties (the 2026-11-08 rules are off)
 orthology: {flank_bp: 600, guard_bp: 0, min_aln: 200, min_pid: 80,
-            tandem_mask: false, single_copy: false, clear_margin: 0, reciprocal: false}
+            tandem_mask: false, single_copy: false, clear_margin: 0, reciprocal: false,
+            repeat_mask: false, extend_steps: []}
 
 subfamily:
   # sub-subfamily consensus FASTA directory (subx/), not deposited; server only

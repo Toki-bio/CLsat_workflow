@@ -41,6 +41,16 @@ jb = {tuple(sorted(l.split('	')[:2])): l.split('	')[-1] for l in open(sys.argv[4
 if jb.get(('Ja', 'Jb')) != 'joint':
     print('FAIL joint pair Ja-Jb not marked joint: %s' % jb.get(('Ja', 'Jb')))
     bad += 1
+# flanks.json keeps the masked letters (viewer): Fa's left flank (600) = 300 unique letters, then 300 letters of the
+# dispersed repeat next to the array -> the repeat mask lies in its array-side half and the unique half is used
+fe = json.load(open(sys.argv[6] + '/flanks.json'))['Fa']['LF']
+rm = (fe.get('mask') or {}).get('repeat', [])
+n_rep = sum(b - a + 1 for a, b in rm)
+if not (250 <= n_rep <= 320 and rm and min(a for a, _ in rm) > fe['start'] + 250 and fe.get('left', 0) >= 250):
+    print('FAIL flanks.json mask of Fa LF: %s, left %s (flank %s-%s)' % (rm, fe.get('left'), fe['start'], fe['end']))
+    bad += 1
+else:
+    print('Fa LF mask: repeat %s, %s letters left' % (rm, fe['left']))
 if bad:
     sys.exit('TOY (mask) FAILED: %d problems' % bad)
 print('PASS toy (mask): every known answer reproduced')

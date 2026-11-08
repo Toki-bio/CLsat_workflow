@@ -204,6 +204,7 @@ rep_masked = {}      # letters masked as pieces with another own-genome copy (--
 pre_rep = {}         # flank after the tandem mask, before the repeat mask (--joint uses these)
 blocked = set()      # flanks a longer window cannot help: contig end, next locus
 flank_len = {}       # window length used per flank
+snap = {}            # flank -> [(kind, oriented seq after that mask)], for the viewer (masked letters per kind)
 
 
 def prep(FLANK, keys):
@@ -212,7 +213,7 @@ def prep(FLANK, keys):
     def cur():
         return [k for k in keys if k in flanks]
     for k in keys:                      # a retried flank starts clean
-        for d in (flanks, flankseq, sat_masked, masked_bp, rep_masked, pre_rep):
+        for d in (flanks, flankseq, sat_masked, masked_bp, rep_masked, pre_rep, snap):
             d.pop(k, None)
     for (i, side) in keys:
         sp, scf, s, e, fam, lid, mono = loci[i]
@@ -244,6 +245,7 @@ def prep(FLANK, keys):
         flankseq[(i, side)] = (seq, fs, fe)
         if kl == 'unique':
             flanks[(i, side)] = (sp, oriented, (scf, fs, fe))
+            snap[(i, side)] = [('raw', oriented)]
     cc = collections.Counter(fclass.values())
     print('flank classes: %s' % dict(cc), flush=True)
     print('unique anchor flanks (pre-residual-drop): %d' % len(flanks), flush=True)
@@ -251,6 +253,8 @@ def prep(FLANK, keys):
     # residual-satellite drop (published runs) or mask (--repeat-mask)
     if REPMASK:
         sat_mask_windows(cur())
+        for k in cur():
+            snap[k].append(('satellite', flanks[k][1]))
         sat_drop = set('%d_%s' % k for k in cur() if FC.unmasked(flanks[k][1]) < MIN_ALN)
     else:
         with open(OUT + '/uflanks.fa', 'w') as f:
@@ -284,6 +288,7 @@ def prep(FLANK, keys):
             mseq, n = FC.mask(raw, fs, TIV[sp].get(scf, []))
             masked_bp[k] = n
             omseq = FC.n_union(mseq if k[1] == 'R' else rc(mseq), oseq)   # keep the satellite mask (--repeat-mask)
+            snap[k].append(('tandem', omseq))
             if FC.unmasked(omseq) < MIN_ALN:
                 del flanks[k]; fclass[k] = 'tandem'; continue
             flanks[k] = (sp, omseq, (scf, fs, fe))
@@ -300,6 +305,7 @@ def prep(FLANK, keys):
             iv = [(a_, min(b_, len(seq))) for a_, b_ in PIECES.get(k, ()) if a_ <= len(seq)]
             mseq, n = FC.mask(seq, 1, FC.merge(iv))
             rep_masked[k] = n
+            snap[k].append(('repeat', mseq))
             if FC.unmasked(mseq) < MIN_ALN:
                 del flanks[k]; fclass[k] = 'masked'; continue
             flanks[k] = (sp_, mseq, g)
@@ -665,6 +671,16 @@ for i, (sp, scf, s, e, fam, lid, mono) in enumerate(loci):
             seq, fs, fe = fq
             rec[side] = {'start': fs, 'end': fe, 'len': len(seq), 'seq': seq,
                          'truncated': cls == 'truncated', 'class': cls}
+            sn = snap.get((i, key))
+            if sn and len(sn) > 1:
+                # masked letters by kind (genomic 1-based runs) and the letters left for the search
+                m = {}
+                for (_, a_), (kind, b_) in zip(sn, sn[1:]):
+                    r_ = FC.new_mask_runs(a_, b_, key, fs, fe)
+                    if r_:
+                        m[kind] = r_
+                rec[side]['mask'] = m
+                rec[side]['left'] = FC.unmasked(sn[-1][1])
         else:
             rec[side] = {'start': None, 'end': None, 'len': 0, 'seq': '',
                          'truncated': True, 'class': cls}

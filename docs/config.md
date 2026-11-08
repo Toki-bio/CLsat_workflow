@@ -58,6 +58,9 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `orthology.copy_min_aln` | int |  | `0` | Aligned letters of a second copy for single_copy (0 = min_aln). |
 | `orthology.clear_margin` | float |  | `0.9` | Clear best hit: in each target genome the best locus must beat the second-best locus, second < clear_margin x best bits; ties never decide. 0 = the published rule (best bits, first hit wins a tie). |
 | `orthology.reciprocal` | bool |  | `True` | Keep a pair only if each locus is the other's clear best hit (one-way hits are listed in ortho/ortho_oneway.tsv). Needs clear_margin > 0. |
+| `orthology.repeat_mask` | bool |  | `True` | Instead of dropping a flank that is not single copy, mask (N) its pieces >= mask_min_aln letters that have another copy in the own genome (minimap2), and its catalogue-satellite pieces; the flank anchors on the letters left; fewer than min_aln left = class 'masked' (author's decision 2026-11-08). Needs single_copy and tandem_mask. |
+| `orthology.mask_min_aln` | int |  | `100` | Shortest repeated piece that repeat_mask masks. |
+| `orthology.extend_steps` | list of int |  | `[600, 3000, 5000]` | Extend on demand: flanks still unresolved (tandem / masked / satellite / low-complexity / telomeric) are retried at the next length; a flank stops at the middle of the gap to the next locus. [] = one length, flank_bp. Needs repeat_mask. The owner's rule 2026-11-08: [600, 3000, 5000]. |
 | `subfamily.consensuses` | path |  |  | Directory of per-sub-subfamily consensus FASTA files (`subx/` in the Darevskia run) or one multi-record FASTA. Optional: without it the stage is skipped. |
 | `subfamily.members` | map -> list |  |  | Family -> list of its sub-subfamily names (the FAMSUBS table). Each family listed must exist in `families`. |
 | `subfamily.confident_delta` | float |  | `10` | Bits margin over the second-best sub-subfamily for a confident call. |
