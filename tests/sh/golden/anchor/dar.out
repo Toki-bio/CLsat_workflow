@@ -4,8 +4,8 @@ INPUT	@CONS@/CLsat2.cons.fa
 INPUT	@CONS@/CLsat3.cons.fa
 INPUT	@CONS@/CLsat4.cons.fa
 INPUT	@TMP@/subs.fa
-SAY	  anchor CLsat1 (AAAGAAGCTAGT...): 13 consensus records in frame, 9 needed rotation
-MANIFEST	{"family": "CLsat1", "frame_start": "AAAGAAGCTAGTTNGGATGT", "motif": "AAAGAAG", "records": 13, "rotated": 9}
+SAY	  anchor CLsat1 (AAAGAAGCTAGT...): 8 consensus records in frame, 0 needed rotation
+MANIFEST	{"family": "CLsat1", "frame_start": "AAAGAAGCTAGTTNGGATGT", "motif": "AAAGAAG", "records": 8, "rotated": 0}
 OUTPUT	@RUN@/anchored/families.anchored.fa
 OUTPUT	@RUN@/anchored/anchor_report.tsv
 OUTPUT	@RUN@/anchored/anchor_frame.fa

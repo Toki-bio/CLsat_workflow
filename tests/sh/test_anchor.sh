@@ -87,7 +87,7 @@ emit_outputs() { printf '%s\n' "$@" >> "$STAGE_OUTPUTS"; }
 manifest_set() { printf '%s' "$2" > "$RUN/manifest_anchor.json"; }
 
 # sub-subfamily inputs: the manuscript FASTA when present, otherwise the four family consensuses renamed
-SUBS=$MS/subsubfamily_consensuses.fasta
+SUBS=""   # part B: always the synthetic set (the golden files must not depend on the manuscript folder)
 mkdir -p "$TMP/subdir"
 if [ -f "$SUBS" ]; then tr -d '\r' < "$SUBS" > "$TMP/subs.fa"; else
     for f in CLsat1 CLsat2 CLsat3 CLsat4; do printf '>%s.1\n%s\n' "$f" "$(cons_seq $f)"; done > "$TMP/subs.fa"; fi
