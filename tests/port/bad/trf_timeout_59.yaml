@@ -1,0 +1,14 @@
+run_name: t1
+out_dir: out
+genomes:
+  spa: g/a.fa
+  spb: g/b.fa
+families:
+  SatX:
+    consensus: ref/x.fa
+    mono: 146
+  SatY: {consensus: ref/y.fa, mono: 80}
+family_assignment: ref/assign.tsv
+finalisation:
+  trf_timeout: 59
+  min_piece_bp: 999

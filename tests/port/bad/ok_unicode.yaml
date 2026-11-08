@@ -1,0 +1,12 @@
+run_name: t1
+out_dir: out
+genomes:
+  spa: g/a.fa
+  spb: g/b.fa
+families:
+  SatX:
+    consensus: ref/x.fa
+    mono: 146
+  SatY: {consensus: ref/y.fa, mono: 80}
+family_assignment: ref/assign.tsv
+viewer: {title: "Darevskia é 中", species_names: {spa: "\u00e9\tq"}}

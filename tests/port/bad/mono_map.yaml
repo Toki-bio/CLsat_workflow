@@ -1,0 +1,11 @@
+run_name: t1
+out_dir: out
+genomes:
+  spa: g/a.fa
+  spb: g/b.fa
+families:
+  SatX:
+    consensus: ref/x.fa
+    mono: {a: 1, b: x}
+  SatY: {consensus: ref/y.fa, mono: 80}
+family_assignment: ref/assign.tsv

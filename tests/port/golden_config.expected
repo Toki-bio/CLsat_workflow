@@ -1,0 +1,4 @@
+# Expected differences of tests/port/golden_config.sh (config base names). PORT_SPEC 3/7: forms PyYAML would
+# silently retype are refused by yaml.awk (`YAML subset: ...`, exit 1) while Python loads them.
+xfail_octal          # mono: 010  -> PyYAML int 8; refused
+xfail_underscore     # 1_000      -> PyYAML int 1000; refused

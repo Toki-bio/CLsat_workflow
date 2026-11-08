@@ -1,0 +1,13 @@
+run_name: t1
+out_dir: ~/x/../y
+genomes:
+  spa: g/a.fa
+  spb: g/b.fa
+families:
+  SatX:
+    consensus: ref/x.fa
+    mono: 146
+  SatY: {consensus: ref/y.fa, mono: 80}
+family_assignment: ref/assign.tsv
+manual_loci: ~
+references: {rotated_consensus: '~root/r.fa'}
