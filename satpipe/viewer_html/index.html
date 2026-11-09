@@ -4779,11 +4779,13 @@ function bindEndsFlanksUI(){
         }
       }
       const col = (typeof CLSAT_COLORS !== "undefined" && CLSAT_COLORS[r.fam]) || "#60a5fa";
-      for (const [c, len, anc] of r.mono_boxes){
+      for (const [c, len, anc, py, pd, od] of r.mono_boxes){
         const bw = Math.max(1, (cw - 1) * Math.min(1, len / r.mono));
         s += '<rect x="' + (xA + c * cw) + '" y="' + y + '" width="' + bw.toFixed(1) + '" height="' + h + '" fill="' + col + '" fill-opacity="' + (anc ? 0.95 : 0.3)
           + '"' + (anc ? "" : ' stroke="' + col + '" stroke-dasharray="2 2" stroke-width="0.8"') + "><title>" + e(r.id) + " monomer, " + len + " letters; "
-          + (anc ? (ri === 0 ? "first row (columns follow its monomers)" : "clear match to the first row's monomer in this column") : "no clear match: left-shifted, position not resolved")
+          + (anc ? (ri === 0 ? "first row (columns follow its monomers)" : "paired with the first row's monomer " + py + ": " + pd + " letters differ; closest other monomer of the first row: "
+                 + (od == null ? "none similar" : od + " letters differ"))
+                 : "no clear partner: left-shifted" + (pd != null ? " (closest monomer of the first row: " + pd + " letters differ; next: " + (od == null ? "none similar" : od) + ")" : ""))
           + "</title></rect>";
       }
     });
@@ -4798,8 +4800,8 @@ function bindEndsFlanksUI(){
     h += '<div class="note">Rows are turned to read the same way as the first row (← = reverse complement). Flanks: windows of ' + W
       + " alignment columns counted from the array edge; blue strength = identity to the reference row ★ (click a row label to change it), pale at 80 %, full at 100 %; "
       + "dark = below 80 %; grey = more than half of the letters masked (satellite, tandem or repeated piece; masks cover the letters stage 19 examined). "
-      + "Monomer boxes in the family colour: solid = clear match to the first row's monomer in that column (each the other's best, second &lt; " + STACKS.margin
-      + " × best); faint dashed = left-shifted, order not resolved. Arrays over " + STACKS.max_mono + " monomers are not compared monomer by monomer. "
+      + "Monomer boxes in the family colour: solid = paired with the first row's monomer in that column (monomers paired in order along the array; "
+      + "kept only when that partner differs by at least " + STACKS.gain + " letters fewer than any other monomer of the first row); faint dashed = left-shifted, partner not resolved. Arrays over " + STACKS.max_mono + " monomers are not compared monomer by monomer. "
       + "Hover a window or box for numbers.</div>";
     mainEl.innerHTML = h + s;
     mainEl.querySelectorAll("g.lab").forEach(el => el.addEventListener("click", ev => {

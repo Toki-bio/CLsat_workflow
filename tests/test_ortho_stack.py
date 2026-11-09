@@ -30,12 +30,28 @@ def test_boundaries_from_hits_phase():
     assert S.segments(n, b)[0] == (0, 70) and S.segments(n, b)[-1] == (970, 1000)
 
 
-def test_clear_anchors_reciprocal_and_collinear():
-    bits = {(0, 0): 100, (1, 1): 100, (1, 2): 95,      # x1: not clear (95 >= 0.9 x 100)
-            (2, 3): 100, (3, 2): 50, (4, 1): 100}      # (4,1): clear for x4 but y1's best... crosses the chain
-    a = S.clear_anchors(bits, 0.9)
-    assert (1, 1) not in a and a[0] == (0, 0) and (2, 3) in a
-    assert all(a[i][0] < a[i + 1][0] and a[i][1] < a[i + 1][1] for i in range(len(a) - 1))
+def test_order_anchors_letter_rule():
+    # reference monomers 0..4 differ from each other by 2 letters; row monomers = ref 0, 1, 3, 4 (ref 2 lost)
+    L = [100] * 5
+    diff = {}
+    for x, y0 in enumerate([0, 1, 3, 4]):
+        for y in range(5):
+            diff[(x, y)] = 0 if y == y0 else 2
+    a = S.order_anchors(diff, 4, 5, L[:4], L)
+    assert a == [(0, 0), (1, 1), (2, 3), (3, 4)]
+    # one letter closer is not enough
+    diff[(0, 1)] = 1
+    assert (0, 0) not in S.order_anchors(diff, 4, 5, L[:4], L)
+    # two identical reference monomers (1 and 3): row monomer matching both is not clear
+    d2 = {(0, 0): 0, (0, 1): 3, (0, 2): 3, (1, 0): 3, (1, 1): 0, (1, 2): 0, (2, 0): 3, (2, 1): 3, (2, 2): 0}
+    a = S.order_anchors(d2, 3, 3, [100] * 3, [100] * 3)
+    assert (0, 0) in a and all(x != 1 for x, _ in a)
+
+
+def test_letter_diffs():
+    h = {('0', '0'): (200.0, 98.0, 150, 0, 0, 0, 0), ('0', '1'): (50.0, 60.0, 150, 0, 0, 0, 0), ('1', '0'): (100.0, 100.0, 100, 0, 0, 0, 0)}
+    d = S.letter_diffs(h, [150, 122], [152, 152])
+    assert d == {(0, 0): 3, (1, 0): 22}          # 2 % of 150 = 3; 22 letters of the partial monomer unaligned
 
 
 def test_layout_gap_and_leftshift():

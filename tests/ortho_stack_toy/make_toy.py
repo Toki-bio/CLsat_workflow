@@ -75,7 +75,16 @@ lfc = mut(LF1, 0.01)
 lfc = lfc[:2000] + rnd(200) + lfc[2000:]
 place('c', 'L3', lfc, mut(arrA, 0.003), mut(RF1, 0.01), reverse=True)
 place('a', 'L4', LF2, homo * 8, RF2)
+# Group 3 (A L6, B L7): neighbouring monomers differ by 2 letters only (each variant = consensus + 1 own letter);
+# A's 7th monomer is a second copy of its 3rd. B = A. B's 3rd and 7th have two exact partners -> not clear; the
+# other 10 are clear (0 letters against >= 2).
+pos = R.sample(range(100), 12)
+near = [subst(cons, [pos[k]]) for k in range(12)]
+near[6] = near[2]
+LF3, RF3 = rnd(5000), rnd(5000)
+place('a', 'L6', LF3, ''.join(near), RF3)
 place('b', 'L5', mut(LF2, 0.01), homo * 6, mut(RF2, 0.01))
+place('b', 'L7', mut(LF3, 0.01), ''.join(near), mut(RF3, 0.01))
 for c in seqs:
     seqs[c] += pad()
     with open('%s/genomes/%s.fa' % (D, c), 'w') as f:
@@ -87,7 +96,7 @@ loci['L1']['LF']['mask'] = {'repeat': [[s - 299, s - 200]]}      # 1-based genom
 json.dump(loci, open(D + '/flanks.json', 'w'))
 with open(D + '/ortho_pairs.tsv', 'w') as f:
     f.write('locusA\tlocusB\tspA\tspB\tpid\taln\tbits\n')
-    for a, b in (('L1', 'L2'), ('L1', 'L3'), ('L4', 'L5')):
+    for a, b in (('L1', 'L2'), ('L1', 'L3'), ('L4', 'L5'), ('L6', 'L7')):
         f.write('%s\t%s\t%s\t%s\t99.0\t600\t1000.0\n' % (a, b, loci[a]['sp'], loci[b]['sp']))
 open(D + '/cons.fa', 'w').write('>F\n%s\n' % cons)
 json.dump({'G001': {'rows': ['L1', 'L2', 'L3'], 'ori': ['+', '+', '-'],
@@ -95,5 +104,6 @@ json.dump({'G001': {'rows': ['L1', 'L2', 'L3'], 'ori': ['+', '+', '-'],
                     # ref segment index of each B monomer: B = v1(part) v2..v5 v8 v9 v10 (v1 tail)
                     'b_cols': [0, 1, 2, 3, 4, 7, 8, 9], 'c_cols': list(range(10)),
                     'mask_window': 2},
-           'G002': {'rows': ['L4', 'L5'], 'anchored_b': 0, 'b_n': 6}}, open(D + '/expected.json', 'w'))
+           'G002': {'rows': ['L4', 'L5'], 'anchored_b': 0, 'b_n': 6},
+           'G003': {'rows': ['L6', 'L7'], 'b_anchored': [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1]}}, open(D + '/expected.json', 'w'))
 print('toy written')

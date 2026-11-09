@@ -39,6 +39,11 @@ b2 = g2['rows'][1]['mono_boxes']
 ok(len(b2) == e2['b_n'] and sum(b[2] for b in b2) == e2['anchored_b'], 'G002 B monomers %d, anchored %d (left-shifted)'
    % (len(b2), sum(b[2] for b in b2)))
 ok([b[0] for b in b2] == list(range(len(b2))), 'G002 left-shifted from the left edge %s' % [b[0] for b in b2])
+g3, e3 = st['G003'], exp['G003']
+b3 = g3['rows'][1]['mono_boxes']
+ok([b[2] for b in b3] == e3['b_anchored'], 'G003 near-identical monomers: paired %s (3rd and 7th have two exact partners)' % [b[2] for b in b3])
+ok(all(b[4] == 0 and b[5] is not None and b[5] >= 2 for b in b3 if b[2]), 'G003 paired monomers: 0 letters differ, closest other >= 2 %s'
+   % [(b[4], b[5]) for b in b3])
 fa = open(O + '/stack/G001.fa').read().split('>')[1:]
 L = set(len(''.join(x.split('\n')[1:])) for x in fa)
 ok(len(L) == 1, 'G001.fa rows of equal length %s' % L)

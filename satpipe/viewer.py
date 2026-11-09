@@ -292,9 +292,9 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                            codes, cons, {f['name']: f['colour'] for f in config['families']}, dict(cfg.genomes), out,
                            {t: shutil.which(ctx.tool(t), path=ctx.env().get('PATH')) or ctx.tool(t)
                             for t in ('samtools', 'ssearch36', 'mafft')},
-                           margin=o['clear_margin'], flank_view=flank_view, say=say)
+                           flank_view=flank_view, say=say)
         config['stacks'] = {'file': 'stacks.json', 'n_groups': len(res['groups']), 'window': res['window'],
-                            'max_mono': res['max_mono'], 'margin': res['margin']}
+                            'max_mono': res['max_mono'], 'gain': res['gain']}
     json.dump(config, open(os.path.join(out, 'viewer_config.json'), 'w'), separators=(',', ':'))
 
     # ---- 9. the page --------------------------------------------------------------------------

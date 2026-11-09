@@ -10,10 +10,11 @@ row, all turned to read the same way. Two products per group:
     columns (flanks, monomer columns, left-shifted stretches) and a block mask with each row's masked letters.
 
 Monomers: each array is cut at its family consensus phase (position 1 of the consensus), from ssearch36 hits of
-the doubled consensus on overlapping windows of the array. A monomer of a row is placed under a monomer of the
-reference row (the group's first row) only when the two are each other's clear best match (second < MARGIN x
-best bits); these anchors are chained collinearly. Every other monomer is left-shifted: placed in the next free
-column after the previous anchor, and labelled so. Arrays with more than MAX_MONO monomers are not compared
+the doubled consensus on overlapping windows of the array. The monomers of a row are paired in order with those
+of the reference row (the group's first row); a pair is kept (placed in one column) only when that partner is at
+least MIN_GAIN letters closer than any other monomer of the reference array (owner 2026-11-09; the flank rule,
+second < 0.9 x best bits, cannot separate monomers that differ by 1-3 letters). Every other monomer is
+left-shifted: placed in the next free column after the previous kept pair, and labelled so. Arrays with more than MAX_MONO monomers are not compared
 monomer by monomer (left-shifted whole).
 
 Tools: samtools (flank and array letters), ssearch36 (orientation, monomers), mafft (flanks, anchored columns).
@@ -28,6 +29,7 @@ import tempfile
 
 WIN = 100            # flank window, alignment columns
 MAX_MONO = 500       # larger arrays are left-shifted whole
+MIN_GAIN = 2         # a monomer partner is clear when it is this many letters closer than any other (owner 2026-11-09)
 COMP = str.maketrans('ACGTNacgtn-', 'TGCANtgcan-')
 
 
@@ -136,38 +138,54 @@ def segments(n, bounds):
 
 # ----------------------------------------------------------------------------- monomer anchors
 
-def clear_anchors(bits, margin):
-    """bits: {(x, y): score} between row monomers x and reference monomers y. Anchor = reciprocal clear best
-    (second < margin x best on both sides). Then the collinear chain (x and y both increasing) with the largest
-    summed score. Returns [(x, y)] sorted."""
-    bx = collections.defaultdict(list)
-    by = collections.defaultdict(list)
-    for (x, y), s in bits.items():
-        bx[x].append((s, y)); by[y].append((s, x))
+def letter_diffs(hits, qlen, tlen, min_pid=70.0):
+    """ssearch36 hits {(q, t): (bits, pid, alen, ...)} between monomers -> {(x, y): letters that differ}: the
+    alignment's mismatch and gap columns plus the letters of the shorter monomer left out of the local alignment.
+    Pairs below min_pid are left out (no partner)."""
+    out = {}
+    for (q, t), v in hits.items():
+        if v[1] < min_pid:
+            continue
+        x, y = int(q), int(t)
+        out[(x, y)] = int(round(v[2] * (1 - v[1] / 100.0))) + max(0, min(qlen[x], tlen[y]) - v[2])
+    return out
 
-    def clear(lst):
-        lst = sorted(lst, reverse=True)
-        if not lst:
-            return None
-        if len(lst) > 1 and lst[1][0] >= margin * lst[0][0]:
-            return None
-        return lst[0][1]
-    best_x = {x: clear(v) for x, v in bx.items()}
-    best_y = {y: clear(v) for y, v in by.items()}
-    cand = sorted((x, y) for x, y in best_x.items() if y is not None and best_y.get(y) == x)
-    if not cand:
-        return []
-    sc = [bits[c] for c in cand]
-    dp, prev = sc[:], [-1] * len(cand)
-    for i in range(len(cand)):
-        for j in range(i):
-            if cand[j][0] < cand[i][0] and cand[j][1] < cand[i][1] and dp[j] + sc[i] > dp[i]:
-                dp[i], prev[i] = dp[j] + sc[i], j
-    i = max(range(len(cand)), key=lambda k: dp[k])
-    chain = []
-    while i >= 0:
-        chain.append(cand[i]); i = prev[i]
-    return chain[::-1]
+
+def order_anchors(diff, n, m, qlen, tlen, gain=MIN_GAIN):
+    """Owner's rule 2026-11-09. Pair the row's monomers (0..n-1) with the reference monomers (0..m-1) in order
+    (both series run the same way between the aligned flanks): the pairing with the most matching letters in
+    total, each monomer used once, no crossing. A pair (x, y) is clear when y differs from x by at least `gain`
+    letters fewer than any other reference monomer does. Returns the clear pairs [(x, y)], in order."""
+    sim = {k: min(qlen[k[0]], tlen[k[1]]) - d for k, d in diff.items()}
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for x in range(1, n + 1):
+        row, prev = dp[x], dp[x - 1]
+        for y in range(1, m + 1):
+            best = prev[y] if prev[y] > row[y - 1] else row[y - 1]
+            s = sim.get((x - 1, y - 1))
+            if s is not None and s > 0 and prev[y - 1] + s > best:
+                best = prev[y - 1] + s
+            row[y] = best
+    path, x, y = [], n, m
+    while x and y:
+        s = sim.get((x - 1, y - 1))
+        if s is not None and s > 0 and dp[x][y] == dp[x - 1][y - 1] + s:
+            path.append((x - 1, y - 1)); x -= 1; y -= 1
+        elif dp[x][y] == dp[x - 1][y]:
+            x -= 1
+        else:
+            y -= 1
+    path.reverse()
+    by_x = collections.defaultdict(list)
+    for (a, b), d in diff.items():
+        by_x[a].append((d, b))
+    out = []
+    for x, y in path:
+        d = diff[(x, y)]
+        other = min((dd for dd, b in by_x[x] if b != y), default=None)
+        if other is None or other - d >= gain:
+            out.append((x, y))
+    return out
 
 
 def layout(n_ref, rows_n, anchors):
@@ -332,7 +350,7 @@ def cut_monomers(ss, arr, cons, mono, tmp):
     return segments(n, b), strand
 
 
-def build_stacks(loci, pairs, sp_order, fam_cons, fam_colour, genomes, out_dir, tools, margin=0.9,
+def build_stacks(loci, pairs, sp_order, fam_cons, fam_colour, genomes, out_dir, tools, gain=MIN_GAIN,
                  flank_view=5000, win=WIN, max_mono=MAX_MONO, say=print):
     """loci: flanks.json dict (lid -> record with sp, scf, start (0-based), end, subtype, mono, LF/RF with class,
     mask). pairs: [(a, b)]. genomes: code -> fasta (indexed). tools: {'samtools','ssearch36','mafft'} paths.
@@ -358,7 +376,7 @@ def build_stacks(loci, pairs, sp_order, fam_cons, fam_colour, genomes, out_dir, 
                 out.update(range(a, b + 1))        # genomic 1-based
         return out
 
-    result = {'window': win, 'max_mono': max_mono, 'margin': margin, 'groups': []}
+    result = {'window': win, 'max_mono': max_mono, 'gain': gain, 'groups': []}
     with tempfile.TemporaryDirectory() as tmp:
         for gi, grp in enumerate(groups(pairs, sp_of, sp_order), 1):
             gid = 'G%03d' % gi
@@ -411,8 +429,17 @@ def build_stacks(loci, pairs, sp_order, fam_cons, fam_colour, genomes, out_dir, 
                 q = [('%d' % i, row['arr'][a:b]) for i, (a, b) in enumerate(row['segs'])]
                 lb = [('%d' % i, ref['arr'][a:b]) for i, (a, b) in enumerate(ref['segs'])]
                 h = ssearch_bits(ss, q, lb, tmp, nlib=len(lb))
-                bits = {(int(k[0]), int(k[1])): v[0] for k, v in h.items() if v[1] >= 70}
-                anchors[row['id']] = clear_anchors(bits, margin)
+                ql, tl = [len(x[1]) for x in q], [len(x[1]) for x in lb]
+                dfs = letter_diffs(h, ql, tl)
+                anchors[row['id']] = order_anchors(dfs, len(q), len(lb), ql, tl, gain)
+                # for the page: letters different from the paired monomer and from the closest other one
+                pr = dict(anchors[row['id']])
+                for x in range(len(q)):
+                    ds = sorted((d, y) for (xx, y), d in dfs.items() if xx == x)
+                    if x in pr:
+                        row.setdefault('why', {})[x] = [pr[x] + 1, dfs[(x, pr[x])], min((d for d, y in ds if y != pr[x]), default=None)]
+                    elif ds:
+                        row.setdefault('why', {})[x] = [None, ds[0][0], ds[1][0] if len(ds) > 1 else None]
             keys, place = layout(len(ref['segs']), {r['id']: len(r['segs']) for r in rows[1:]}, anchors)
             place[ref['id']] = place.pop('ref')
             col = {k: i for i, k in enumerate(keys)}
@@ -502,6 +529,7 @@ def build_stacks(loci, pairs, sp_order, fam_cons, fam_colour, genomes, out_dir, 
                           'lcls': r['lcls'], 'rcls': r['rcls'], 'lf_len': len(r['lf']), 'rf_len': len(r['rf']),
                           'L': prL[r['id']], 'R': prR[r['id']],
                           'mono_boxes': [[col[k], r['segs'][i][1] - r['segs'][i][0], 1 if anc else 0]
+                                         + (r.get('why', {}).get(i) or [])
                                          for i, (k, anc) in enumerate(place[r['id']])]}
                          for r in rows]})
             say('  stack %s: %d rows, %d monomer columns, %d anchored%s' % (
