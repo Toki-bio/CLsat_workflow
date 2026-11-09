@@ -240,6 +240,11 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "title": F("str", doc="Page title."),
         "species_names": F("map", key_pattern=CODE_PATTERN, value=F("str"),
                            doc="Code -> display name. Keys must exist in `genomes`."),
+        "ortho_stack": F("bool", default=False,
+                         doc="Ortholog stacks (owner 2026-11-09): every group of decided pairs drawn as rows turned to "
+                             "read the same way: a schematic (flank identity windows, monomer boxes aligned where the "
+                             "match is clear, otherwise left-shifted) and an aligned FASTA + BED + block mask per group "
+                             "for ViewAlign. Needs orthology.clear_margin > 0, samtools, ssearch36 and mafft."),
     }),
 })
 

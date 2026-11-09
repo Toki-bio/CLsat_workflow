@@ -283,6 +283,18 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
             'full': note_full,
         },
     }
+    # ---- 8b. ortholog stacks (viewer.ortho_stack) ------------------------------------------
+    if view.get('ortho_stack'):
+        if not decided:
+            raise SystemExit('viewer: ortho_stack needs decided pairs (orthology.clear_margin > 0)')
+        from .ortho_stack import build_stacks
+        res = build_stacks(flanks, [tuple(p[:2]) for p in read_tsv(os.path.join(out, 'ortho_pairs.tsv'))[1:]],
+                           codes, cons, {f['name']: f['colour'] for f in config['families']}, dict(cfg.genomes), out,
+                           {t: shutil.which(ctx.tool(t), path=ctx.env().get('PATH')) or ctx.tool(t)
+                            for t in ('samtools', 'ssearch36', 'mafft')},
+                           margin=o['clear_margin'], flank_view=flank_view, say=say)
+        config['stacks'] = {'file': 'stacks.json', 'n_groups': len(res['groups']), 'window': res['window'],
+                            'max_mono': res['max_mono'], 'margin': res['margin']}
     json.dump(config, open(os.path.join(out, 'viewer_config.json'), 'w'), separators=(',', ':'))
 
     # ---- 9. the page --------------------------------------------------------------------------

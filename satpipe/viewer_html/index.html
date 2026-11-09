@@ -257,6 +257,7 @@
     <div class="row">
       <label></label>
       <button id="fullTableBtn" class="listBtn">Flank orthology table</button>
+      <button id="stackBtn" class="listBtn" style="display:none">Ortholog stacks</button>
     </div>
 
     <h2>Locus Table</h2>
@@ -511,6 +512,7 @@ function applyViewerConfig(cfg){
   FLAGGED_LOCI.sort((a,b)=>(a.cat==="UNIQUE_SEED_CONTRADICTION")===(b.cat==="UNIQUE_SEED_CONTRADICTION")?0:(a.cat==="UNIQUE_SEED_CONTRADICTION"?-1:1));
   LIST_NOTES = Object.assign({ortho:"", flag:"", full:""}, cfg.notes || {});
   LIST_COUNTS = cfg.counts || {};
+  { const sb = document.getElementById("stackBtn"); if (sb) sb.style.display = cfg.stacks ? "" : "none"; }
   // DOM: title, legend, family / sub-subfamily filter
   const title = cfg.title || "Satellite locus viewer";
   document.title = title;
@@ -4676,6 +4678,142 @@ function bindEndsFlanksUI(){
 })();
 </script>
 
+<!-- Ortholog stacks (satpipe viewer.ortho_stack, owner 2026-11-09): schematic + ViewAlign text mode -->
+<style>
+  #stackModal .cbox{width:min(1500px,96vw);height:90vh;display:flex;flex-direction:column;}
+  #stackWrap{display:flex;flex:1;min-height:0;}
+  #stackList{width:230px;overflow:auto;border-right:1px solid #24344d;font-size:12px;}
+  #stackList .it{padding:5px 8px;cursor:pointer;border-bottom:1px solid #1e293b;color:#cbd5e1;}
+  #stackList .it:hover{background:#1e293b;} #stackList .it.sel{background:#1e3a5f;color:#fff;}
+  #stackList .w{color:#fbbf24;}
+  #stackMain{flex:1;overflow:auto;padding:10px 14px;font-size:12px;color:#cbd5e1;}
+  #stackMain .note{color:#94a3b8;margin:4px 0 8px 0;line-height:1.45;max-width:1100px;}
+  #stackMain .warn{color:#fbbf24;margin:2px 0;}
+  #stackMain a{color:#93c5fd;}
+  #stackMain .lab{cursor:pointer;}
+  #stackSearch{margin:6px 8px;width:calc(100% - 16px);}
+</style>
+<div id="stackModal" class="cmodal"><div class="cbox">
+  <div class="chead"><div class="ctitle">Ortholog stacks</div>
+    <button class="cclose" id="stackClose" title="Close (Esc)">&times;</button></div>
+  <div id="stackWrap">
+    <div id="stackList"></div>
+    <div id="stackMain">Loading…</div>
+  </div>
+</div></div>
+<script>
+(function(){
+  const modal = document.getElementById("stackModal");
+  const listEl = document.getElementById("stackList"), mainEl = document.getElementById("stackMain");
+  let STACKS = null, cur = null, refRow = 0, fillList = null;
+  const VA = "https://toki-bio.github.io/MSA-viewer/";
+  const e = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const spl = sp => (typeof SPECIES_LABEL !== "undefined" && SPECIES_LABEL[sp]) || sp;
+  function ident(g, side, a, b){
+    const I = g.flank[side].ident;
+    return I[a + "|" + b] || I[b + "|" + a] || [];
+  }
+  function openStacks(){
+    modal.classList.add("open");
+    if (STACKS) return;
+    fetch((VIEWER_CONFIG.stacks && VIEWER_CONFIG.stacks.file) || "stacks.json").then(r => r.json()).then(j => {
+      STACKS = j; drawList(); if (j.groups.length) select(0);
+    }).catch(err => { mainEl.textContent = "stacks.json could not be read: " + err; });
+  }
+  function drawList(){
+    listEl.innerHTML = '<input id="stackSearch" placeholder="locus or genome">';
+    const box = document.createElement("div");
+    listEl.appendChild(box);
+    fillList = () => {
+      const q = document.getElementById("stackSearch").value.trim().toLowerCase();
+      box.innerHTML = "";
+      STACKS.groups.forEach((g, i) => {
+        const txt = g.id + " " + g.rows.map(r => r.id + " " + r.sp + " " + spl(r.sp)).join(" ");
+        if (q && !txt.toLowerCase().includes(q)) return;
+        const d = document.createElement("div");
+        d.className = "it" + (cur === i ? " sel" : "");
+        d.innerHTML = "<b>" + g.id + "</b> " + (g.warn.length ? '<span class="w" title="' + e(g.warn.join("; ")) + '">⚠</span>' : "")
+          + "<br>" + g.rows.map(r => e(r.id) + " <span style='color:#94a3b8'>" + e(spl(r.sp)) + "</span>").join(" · ");
+        d.onclick = () => select(i);
+        box.appendChild(d);
+      });
+    };
+    document.getElementById("stackSearch").addEventListener("input", fillList);
+    fillList();
+  }
+  function select(i){ cur = i; refRow = 0; if (fillList) fillList(); draw(); }
+  function draw(){
+    const g = STACKS.groups[cur], W = STACKS.window, rows = g.rows, ref = rows[refRow];
+    const nL = g.flank.L.n, nR = g.flank.R.n, ncol = g.ncol;
+    const ww = 6, labW = 270, rowH = 22, gap = 10;
+    const cw = Math.max(3, Math.min(16, Math.floor(700 / Math.max(1, ncol))));
+    const xA = labW + nL * ww + gap, xR = xA + ncol * cw + gap, Wd = xR + nR * ww + 10;
+    const H = 34 + rows.length * rowH + 6;
+    let s = '<svg width="' + Wd + '" height="' + H + '" style="font:11px ui-monospace,monospace;background:#0b1220">';
+    s += '<text x="' + labW + '" y="14" fill="#94a3b8">left flank</text>';
+    s += '<text x="' + xA + '" y="14" fill="#94a3b8">array: ' + ncol + ' monomer columns</text>';
+    s += '<text x="' + xR + '" y="14" fill="#94a3b8">right flank</text>';
+    rows.forEach((r, ri) => {
+      const y = 26 + ri * rowH, h = rowH - 6;
+      s += '<g class="lab" data-ri="' + ri + '"><text x="4" y="' + (y + 12) + '" fill="' + (ri === refRow ? "#fbbf24" : "#e2e8f0") + '">'
+        + (ri === refRow ? "★ " : "☆ ") + e(r.id) + " " + e(spl(r.sp)) + " " + (r.ori === "+" ? "→" : "←") + " " + r.mono_boxes.length + " mono</text>"
+        + "<title>Click: make this row the reference for the flank colours. Shift+click: show the locus in the genome view. "
+        + e(r.name) + "; family " + e(r.fam) + "; flank classes L " + e(r.lcls) + ", R " + e(r.rcls)
+        + (r.ori === "-" ? "; reverse-complemented to read like the first row" : "") + "</title></g>";
+      for (const side of ["L", "R"]){
+        const n = side === "L" ? nL : nR, pr = r[side], id = ri === refRow ? null : ident(g, side, ref.id, r.id);
+        for (let w = 0; w < n; w++){
+          const x = side === "L" ? xA - gap - (w + 1) * ww : xR + w * ww;
+          const letters = pr.letters[w];
+          if (!letters) continue;
+          const m = pr.masked[w], p = id ? id[w] : null;
+          let fill, op = 1, tip;
+          if (m != null && m > 0.5){ fill = "#6b7280"; tip = "masked " + Math.round(m * 100) + " %"; }
+          else if (ri === refRow){ fill = "#e2e8f0"; op = 0.55; tip = "reference row"; }
+          else if (p == null){ fill = "#1e293b"; tip = "too few letters to compare"; }
+          else if (p < 80){ fill = "#0b1220"; tip = p + " % to " + ref.id + " (below 80 %)"; }
+          else { fill = "#3b82f6"; op = 0.15 + 0.85 * (p - 80) / 20; tip = p + " % to " + ref.id; }
+          s += '<rect x="' + x + '" y="' + y + '" width="' + (ww - 1) + '" height="' + h + '" fill="' + fill + '" fill-opacity="' + op.toFixed(2)
+            + '" stroke="#334155" stroke-width="0.4"><title>' + (side === "L" ? "left" : "right") + " flank, columns " + (w * W + 1) + "-" + ((w + 1) * W)
+            + " from the array edge: " + letters + " letters; " + e(tip) + (m && m <= 0.5 ? "; masked " + Math.round(m * 100) + " %" : "") + "</title></rect>";
+        }
+      }
+      const col = (typeof CLSAT_COLORS !== "undefined" && CLSAT_COLORS[r.fam]) || "#60a5fa";
+      for (const [c, len, anc] of r.mono_boxes){
+        const bw = Math.max(1, (cw - 1) * Math.min(1, len / r.mono));
+        s += '<rect x="' + (xA + c * cw) + '" y="' + y + '" width="' + bw.toFixed(1) + '" height="' + h + '" fill="' + col + '" fill-opacity="' + (anc ? 0.95 : 0.3)
+          + '"' + (anc ? "" : ' stroke="' + col + '" stroke-dasharray="2 2" stroke-width="0.8"') + "><title>" + e(r.id) + " monomer, " + len + " letters; "
+          + (anc ? (ri === 0 ? "first row (columns follow its monomers)" : "clear match to the first row's monomer in this column") : "no clear match: left-shifted, position not resolved")
+          + "</title></rect>";
+      }
+    });
+    s += "</svg>";
+    const base = new URL("stack/" + g.id, location.href).href;
+    const va = VA + "?url=" + encodeURIComponent(base + ".fa") + "&title=" + encodeURIComponent("Ortholog stack " + g.id)
+      + "&bed=" + encodeURIComponent(base + ".bed") + "&mask=" + encodeURIComponent(base + ".mask.json");
+    let h = "<div><b>" + g.id + "</b> · " + rows.length + " loci · pairs: " + g.pairs.map(p => p.join("–")).join(", ")
+      + ' · <a href="' + va + '" target="_blank" rel="noopener">open the letters in ViewAlign</a>'
+      + ' · <a href="stack/' + g.id + '.fa" download>FASTA</a></div>';
+    g.warn.forEach(w => { h += '<div class="warn">⚠ ' + e(w) + "</div>"; });
+    h += '<div class="note">Rows are turned to read the same way as the first row (← = reverse complement). Flanks: windows of ' + W
+      + " alignment columns counted from the array edge; blue strength = identity to the reference row ★ (click a row label to change it), pale at 80 %, full at 100 %; "
+      + "dark = below 80 %; grey = more than half of the letters masked (satellite, tandem or repeated piece; masks cover the letters stage 19 examined). "
+      + "Monomer boxes in the family colour: solid = clear match to the first row's monomer in that column (each the other's best, second &lt; " + STACKS.margin
+      + " × best); faint dashed = left-shifted, order not resolved. Arrays over " + STACKS.max_mono + " monomers are not compared monomer by monomer. "
+      + "Hover a window or box for numbers.</div>";
+    mainEl.innerHTML = h + s;
+    mainEl.querySelectorAll("g.lab").forEach(el => el.addEventListener("click", ev => {
+      const ri = +el.dataset.ri;
+      if (ev.shiftKey){ modal.classList.remove("open"); jumpToLocusId(rows[ri].id); return; }
+      refRow = ri; draw();
+    }));
+  }
+  document.getElementById("stackClose").addEventListener("click", () => modal.classList.remove("open"));
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") modal.classList.remove("open"); });
+  window.openStacks = openStacks;
+  document.getElementById("stackBtn").addEventListener("click", openStacks);
+})();
+</script>
 </body>
 </html>
 
