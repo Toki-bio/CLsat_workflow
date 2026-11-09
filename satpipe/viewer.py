@@ -295,6 +295,13 @@ def build(run_dir: str, out_dir: str | None = None, viewer_html: str | None = No
                            flank_view=flank_view, say=say)
         config['stacks'] = {'file': 'stacks.json', 'n_groups': len(res['groups']), 'window': res['window'],
                             'max_mono': res['max_mono'], 'gain': res['gain']}
+    # ---- 8c. per-locus FASTA (viewer.locus_fasta): Get FASTA works for assemblies that are not in NCBI ---------------
+    if view.get('locus_fasta'):
+        from .locus_fasta import write_locus_fasta, SEQ_DIR
+        res = write_locus_fasta(rows, dict(cfg.genomes), out, flank_view,
+                                shutil.which(ctx.tool('samtools'), path=ctx.env().get('PATH')) or ctx.tool('samtools'))
+        config['locus_fasta'] = {'dir': SEQ_DIR, 'flank': res['flank'], 'n': res['n']}
+        say('  locus FASTA: %d loci, %.1f MB' % (res['n'], res['bytes'] / 1e6))
     json.dump(config, open(os.path.join(out, 'viewer_config.json'), 'w'), separators=(',', ':'))
 
     # ---- 9. the page --------------------------------------------------------------------------

@@ -3619,19 +3619,21 @@ function bindUIOnce(){
     btn.disabled = true;
     btn.textContent = "Fetching...";
     resultBox.classList.add("show");
-    statusEl.textContent = "Fetching from NCBI...";
+    statusEl.textContent = (VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Reading the locus FASTA..." : "Fetching from NCBI...";
     seqEl.textContent = "";
     seqEl.dataset.region = "";   // which region the box holds; Analyze Monomers may reuse it only for that region
     copyBtn.style.display = "none";
     
     try {
-      const fasta = await fetchNCBIFasta(scf, start, end);
-      console.log("[FASTA] ✓ Success! Received", fasta.length, "characters");
-      statusEl.textContent = `${scf}:${start}-${end} (${end - start + 1} bp)`;
+      const got = await fetchSeq(scf, start, end);
+      const fasta = got.text;
+      console.log("[FASTA] ✓ Success! Received", fasta.length, "characters from", got.src);
+      statusEl.textContent = `${scf}:${got.start}-${got.end} (${got.end - got.start + 1} bp, from ${got.src})` + (got.note ? "; " + got.note : "");
       seqEl.textContent = fasta;
-      seqEl.dataset.region = `${currentLocus.sp}|${scf}:${start}-${end}`;
+      // the box is reused by Analyze Monomers only for the view it was asked for, and only when nothing was clipped
+      seqEl.dataset.region = got.note ? "" : `${currentLocus.sp}|${scf}:${start}-${end}`;
       copyBtn.style.display = "inline-block";
-      setStatus(`FASTA sequence fetched from NCBI:\n${scf}:${start}-${end}\n${fasta.length} characters`);
+      setStatus(`FASTA sequence from ${got.src}:\n${scf}:${got.start}-${got.end}\n${fasta.length} characters` + (got.note ? "\n" + got.note : ""));
       
       // Setup copy FASTA button
       copyBtn.onclick = ()=>{
@@ -3649,7 +3651,7 @@ function bindUIOnce(){
       console.error("[FASTA] ✗ FAILED:", e);
       console.error("[FASTA] Error details:", e.message, e.stack);
       statusEl.textContent = "Error: " + e.message;
-      seqEl.textContent = "Failed to fetch sequence. Make sure the scaffold name is a valid NCBI accession (e.g., NC_123456 or NW_123456).\n\nAlternatively, use the 'Copy BED' button and run:\n  bedtools getfasta -fi genome.fa -bed coords.bed";
+      seqEl.textContent = ((VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Failed to read the locus FASTA stored with this viewer." : "Failed to fetch sequence. Make sure the scaffold name is a valid NCBI accession (e.g., NC_123456 or NW_123456).") + "\n\nAlternatively, use the 'Copy BED' button and run:\n  bedtools getfasta -fi genome.fa -bed coords.bed";
       setStatus(`FASTA fetch failed: ${e.message}`);
     } finally {
       btn.disabled = false;
@@ -3689,7 +3691,7 @@ function bindUIOnce(){
     btn.disabled = true;
     btn.textContent = "Analyzing...";
     resultBox.classList.add("show");
-    mStatusEl.textContent = "Fetching sequence from NCBI...";
+    mStatusEl.textContent = (VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Reading the locus FASTA..." : "Fetching sequence from NCBI...";
     listEl.innerHTML = "";
     alignEl.textContent = "";
     copyBtn.style.display = "none";
@@ -3704,8 +3706,9 @@ function bindUIOnce(){
       start = Math.max(1, start - TRIM_FLANK_PAD);
       end = end + TRIM_FLANK_PAD;
       try {
-        sequence = await fetchNCBIFasta(scf, start, end);
-        console.log("[MONOMER] Got sequence from NCBI:", sequence.length, "chars");
+        const got = await fetchSeq(scf, start, end);
+        sequence = got.text; start = got.start; end = got.end;   // offsets below count from what really came back
+        console.log("[MONOMER] Got sequence from", got.src + ":", sequence.length, "chars", got.note);
       } catch (e) {
         console.warn("[MONOMER] NCBI fetch failed:", e.message);
         // Check if FASTA was already fetched and is displayed
@@ -3851,6 +3854,39 @@ function bindUIOnce(){
       console.log("[MONOMER] === ANALYSIS END ===");
     }
   });
+}
+
+/** Sequence for scf:start-end of the current locus. Reads seq/<locus>.fa.gz written by satpipe (viewer.locus_fasta:
+ *  the locus +/- the flank view, cut from its own assembly) and slices it; NCBI only when the run has no such file.
+ *  Returns {text, start, end, src, note}: start/end are what was really returned (the view clipped to the stored piece). */
+const LOCUS_SEQ_CACHE = new Map();
+async function fetchSeq(scf, start, end){
+  const lf = VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta;
+  if (lf && currentLocus && currentLocus.scf === scf){
+    const id = currentLocus.id;
+    let rec = LOCUS_SEQ_CACHE.get(id);
+    if (!rec){
+      const txt = await fetchTextMaybeGz((lf.dir || "seq") + "/" + id + ".fa");
+      const nl = txt.indexOf("\n");
+      const m = /^>(\S+)\s+(\S+)\s+(\S+):(\d+)-(\d+)/.exec(txt.slice(0, nl));
+      if (!m) throw new Error("locus FASTA for " + id + " has no range in its header");
+      rec = {scf: m[3], a: +m[4], b: +m[5], seq: txt.slice(nl + 1).replace(/\s+/g, "")};
+      if (rec.seq.length !== rec.b - rec.a + 1) throw new Error("locus FASTA for " + id + ": length does not match its header");
+      LOCUS_SEQ_CACHE.set(id, rec);
+    }
+    if (rec.scf === scf){
+      const s = Math.max(start, rec.a), e = Math.min(end, rec.b);
+      if (e < s) throw new Error("the view " + scf + ":" + start + "-" + end + " is outside the stored piece " + rec.a + "-" + rec.b);
+      const seq = rec.seq.slice(s - rec.a, e - rec.a + 1);
+      let fa = ">" + scf + ":" + s + "-" + e + "\n";
+      for (let i = 0; i < seq.length; i += 60) fa += seq.slice(i, i + 60) + "\n";
+      const note = (s > start || e < end) ? ("view clipped to the stored piece " + scf + ":" + rec.a + "-" + rec.b +
+                    " (locus \u00b1 " + (lf.flank || 0).toLocaleString() + " bp)") : "";
+      return {text: fa.trim(), start: s, end: e, src: "the locus FASTA stored with this viewer", note};
+    }
+  }
+  const text = await fetchNCBIFasta(scf, start, end);
+  return {text, start, end, src: "NCBI", note: ""};
 }
 
 async function fetchNCBIFasta(accession, start, end) {

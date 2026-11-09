@@ -82,4 +82,5 @@ Relative paths are resolved against the directory that holds the config file. Un
 | `tools` | map -> path |  |  | Optional executable overrides: tool name -> path. The special key `bin_dir` is a directory searched before PATH for every tool. |
 | `viewer.title` | str |  |  | Page title. |
 | `viewer.species_names` | map -> str |  |  | Code -> display name. Keys must exist in `genomes`. |
+| `viewer.locus_fasta` | bool |  | `False` | Per-locus FASTA (owner 2026-11-09): each locus +/- the 5 kb flank view cut from its assembly into seq/<locus>.fa.gz, so Get FASTA and Analyze Monomers work for assemblies that are not in NCBI. Needs samtools. |
 | `viewer.ortho_stack` | bool |  | `False` | Ortholog stacks (owner 2026-11-09): every group of decided pairs drawn as rows turned to read the same way: a schematic (flank identity windows, monomer boxes aligned where the match is clear, otherwise left-shifted) and an aligned FASTA + BED + block mask per group for ViewAlign. Needs orthology.clear_margin > 0, samtools, ssearch36 and mafft. |

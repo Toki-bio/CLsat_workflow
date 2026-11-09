@@ -240,6 +240,10 @@ SCHEMA: dict = F("block", doc="satpipe run configuration", fields={
         "title": F("str", doc="Page title."),
         "species_names": F("map", key_pattern=CODE_PATTERN, value=F("str"),
                            doc="Code -> display name. Keys must exist in `genomes`."),
+        "locus_fasta": F("bool", default=False,
+                         doc="Per-locus FASTA (owner 2026-11-09): each locus +/- the 5 kb flank view cut from its assembly "
+                             "into seq/<locus>.fa.gz, so Get FASTA and Analyze Monomers work for assemblies that are not "
+                             "in NCBI. Needs samtools."),
         "ortho_stack": F("bool", default=False,
                          doc="Ortholog stacks (owner 2026-11-09): every group of decided pairs drawn as rows turned to "
                              "read the same way: a schematic (flank identity windows, monomer boxes aligned where the "
