@@ -3974,8 +3974,42 @@ function drawBorderMarkers(){
   if (!currentLocus || typeof gMainDetail === "undefined" || !gMainDetail) return;
   const l = currentLocus;
   const {innerH} = getDetailSize();
-  gMainDetail.selectAll("line.border, text.borderLbl").remove();
+  gMainDetail.selectAll("line.border, text.borderLbl, .nbrLocus").remove();
   const [xmin, xmax] = xScaleDetail.domain();
+  // Other catalogue loci in view. The flank scan reads straight into a neighbouring array, so
+  // without this its tall bars look like CLsat the catalogue missed. A segment of the same
+  // array (split where the family changes) touches the focal locus; say so.
+  const nbrs = loci.filter(n => n !== l && n.sp === l.sp && n.scf === l.scf && n.end > xmin && n.start < xmax);
+  const SEG_GAP = 1000;   // segment boundaries sit on a 1 kb grid
+  const nbrLabel = n => {
+    const fam = (assignments[n.id] && assignments[n.id].seed) || "?";
+    const gap = n.start >= l.end ? n.start - l.end : (n.end <= l.start ? l.start - n.end : 0);
+    return `${n.id} (${fam}) — ` + (gap <= SEG_GAP ? "same array, separate catalogue locus (split where the family changes)"
+                                                    : `another catalogue locus, ${gap.toLocaleString()} bp away`);
+  };
+  for (const n of nbrs){
+    const a = Math.max(n.start, xmin), b = Math.min(n.end, xmax);
+    const col = CLSAT_COLORS[(assignments[n.id] || {}).seed] || "#9ca3af";
+    gMainDetail.append("rect").attr("class","nbrLocus")
+      .attr("x", xScaleDetail(a)).attr("width", Math.max(1, xScaleDetail(b) - xScaleDetail(a)))
+      .attr("y", 0).attr("height", innerH).attr("fill", col).attr("opacity", 0.10).style("pointer-events","none");
+    gMainDetail.append("rect").attr("class","nbrLocus")
+      .attr("x", xScaleDetail(a)).attr("width", Math.max(1, xScaleDetail(b) - xScaleDetail(a)))
+      .attr("y", 0).attr("height", 5).attr("fill", col);
+    // label inside the plot: at the band edge facing the focal locus when the band is wide,
+    // otherwise starting just inside it so it never runs off the chart
+    const right = n.start >= l.end, W = xScaleDetail.range()[1];
+    const xa = xScaleDetail(a), xb = xScaleDetail(b), LBL = 430;
+    let tx, anchor;
+    if (right){ tx = (W - xa > LBL) ? xa + 4 : xb - 4; anchor = (W - xa > LBL) ? "start" : "end"; }
+    else      { tx = (xb > LBL) ? xb - 4 : xa + 4;     anchor = (xb > LBL) ? "end" : "start"; }
+    gMainDetail.append("text").attr("class","nbrLocus")
+      .attr("x", tx).attr("y", 40).attr("text-anchor", anchor).attr("fill", col).attr("font-size","10px")
+      .attr("stroke", "#070b12").attr("stroke-width", 3).attr("paint-order", "stroke")
+      .style("cursor","pointer").on("click", () => jumpToLocusId(n.id))
+      .text(right ? nbrLabel(n) + " ▸" : "◂ " + nbrLabel(n));
+  }
+  const inNbr = p => { const n = nbrs.find(n => p >= n.start && p <= n.end); return n ? ` (inside ${n.id})` : ""; };
   const range = xmax - xmin;
   const fullSpan = currentLocus.end - currentLocus.start;
   if (range > fullSpan * 0.6) return;  // only near a junction
@@ -4014,9 +4048,9 @@ function drawBorderMarkers(){
       else break;
     }
     if (lo !== null && lo >= xmin && lo <= xmax)
-      marks.push({pos: lo, label: "scan limit", col: "#94a3b8", dim: true});
+      marks.push({pos: lo, label: "scan limit" + inNbr(lo), col: "#94a3b8", dim: true});
     if (hi !== null && hi >= xmin && hi <= xmax)
-      marks.push({pos: hi, label: "scan limit", col: "#94a3b8", dim: true});
+      marks.push({pos: hi, label: "scan limit" + inNbr(hi), col: "#94a3b8", dim: true});
   }
   // A scan window is two monomers wide, so no window can START later than (end - window).
   // The final ~2 monomers of an array therefore carry no bar. Everywhere else the flank scan
