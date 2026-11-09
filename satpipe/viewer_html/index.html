@@ -2314,6 +2314,32 @@ const bedCoord = document.getElementById("bedCoord");
 function setStatus(msg){ statusEl.textContent = msg; }
 function hasD3(){ return typeof d3 !== "undefined"; }
 
+// Visible "working" banner. The status box sits at the bottom of the sidebar, out of sight,
+// so during the ~40 s first load and the 1-2 s redraw of a big locus the page looked hung.
+let _busyEl = null, _busyT0 = 0, _busyTimer = null, _busyMsg = "";
+function _busyPaint(){
+  const s = Math.round((Date.now() - _busyT0) / 1000);
+  _busyEl.textContent = _busyMsg + (s >= 1 ? `  (${s} s)` : "");
+}
+function busy(msg){
+  if (!_busyEl){
+    _busyEl = document.createElement("div");
+    _busyEl.id = "busyBanner";
+    _busyEl.style.cssText = "position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:300;" +
+      "background:#1e293b; color:#e5e7eb; border:1px solid #3b82f6; border-radius:8px; padding:8px 18px;" +
+      "font-size:13px; box-shadow:0 4px 18px rgba(0,0,0,.55); display:none; pointer-events:none;";
+    document.body.appendChild(_busyEl);
+  }
+  if (!msg){ _busyEl.style.display = "none"; clearInterval(_busyTimer); _busyTimer = null; return; }
+  if (!_busyTimer){ _busyT0 = Date.now(); _busyTimer = setInterval(_busyPaint, 500); }
+  _busyMsg = msg; _busyPaint(); _busyEl.style.display = "block";
+}
+// Show the banner, let the browser paint it, then run the (synchronous) drawing work.
+function withBusy(msg, fn){
+  busy(msg);
+  requestAnimationFrame(() => setTimeout(() => { try { fn(); } finally { busy(null); } }, 0));
+}
+
 /* ============================================================================
    PARSERS
 ============================================================================ */
@@ -2895,13 +2921,13 @@ function renderOverview(){
     .attr("y", rectY)
     .attr("height", rectH)
     .style("cursor", "pointer")
-    .on("click", (event, d) => selectLocus(d));
+    .on("click", (event, d) => withBusy(`Drawing ${d.id}…`, () => selectLocus(d)));
   ent.append("title");
 
   const allRects = ent.merge(sel);
   allRects
     .style("cursor", "pointer")
-    .on("click", (event, d) => { event.stopPropagation(); selectLocus(d); })
+    .on("click", (event, d) => { event.stopPropagation(); withBusy(`Drawing ${d.id}…`, () => selectLocus(d)); })
     .attr("x", d => xScaleOver(d.start))
     .attr("width", d => Math.max(4, xScaleOver(d.end) - xScaleOver(d.start)))
     .attr("fill", "rgba(255,255,255,0.01)")  // nearly transparent but clickable
@@ -3308,6 +3334,8 @@ async function fetchTextMaybeGz(path){
 
 async function loadViaFetch(){
   setStatus("Loading viewer_config.json…");
+  busy("Loading viewer data: configuration…");
+  fileOk.textContent = "loading…";
   try {
     const cfgText = await fetchText("viewer_config.json");
     applyViewerConfig(JSON.parse(cfgText));
@@ -3319,6 +3347,7 @@ async function loadViaFetch(){
     throw e;
   }
   setStatus("Loading files via fetch()…");
+  busy("Loading viewer data: locus list…");
 
   // Load main files
   const [mText, aText, bText] = await Promise.all([
@@ -3354,6 +3383,7 @@ async function loadViaFetch(){
   }
 
   // Flank windows (optional). Same format as the in-locus bits files.
+  busy(`Loading viewer data: ${loci.length} loci listed; flank scores…`);
   try {
     const t = await fetchTextMaybeGz(FILE_FLANK_BITS);
     const rows = [];
@@ -3377,11 +3407,16 @@ async function loadViaFetch(){
   }
 
   // Load per-window bits files
+  const _nTracks = Object.keys(FILE_BITS_CLSAT).length, _doneTracks = [];
+  const _trackMsg = () => busy(`Loading per-window scores: ${_doneTracks.length} of ${_nTracks} families` +
+    (_doneTracks.length ? ` (${_doneTracks.join(", ")} done)` : "") + " — the first visit takes about a minute");
+  _trackMsg();
   const perWindowPromises = Object.entries(FILE_BITS_CLSAT).map(async ([clsat, file]) => {
     try {
       const text = await fetchTextMaybeGz(file);
       const rows = parsePerWindowBits(text, clsat);
       buildPerWindowIndex(rows);
+      _doneTracks.push(clsat); _trackMsg();
       return {clsat, count: rows.length};
     } catch (e) {
       console.warn(`Could not load ${file}: ${e.message}`);
@@ -3405,6 +3440,7 @@ async function loadViaFetch(){
 
   fileOk.textContent = "\u2713 data loaded";
   fileOk.className = "pill ok";
+  busy(null);
 
   setStatus(
     `Loaded ${loci.length} loci, ${Object.keys(assignments).length} assignments\n` +
@@ -3872,11 +3908,13 @@ async function fetchNCBIFasta(accession, start, end) {
 function jumpToLocusId(id){
   const l = loci.find(x => x.id === id);
   if (!l){ setStatus(`Locus ${id} not found`); return; }
-  selectSpecies(l.sp, true);
-  scaffoldSel.value = l.scf;
-  drawOverview();
-  selectLocus(l);
-  populateLocusTable(); // refresh highlight
+  withBusy(`Drawing ${id}…`, () => {
+    selectSpecies(l.sp, true);
+    scaffoldSel.value = l.scf;
+    drawOverview();
+    selectLocus(l);
+    populateLocusTable(); // refresh highlight
+  });
 }
 
 /* ============================================================================
@@ -4317,6 +4355,7 @@ function bindEndsFlanksUI(){
   // No server auto-start needed.
 
   loadViaFetch().catch(e=>{
+    busy(null);
     fileOk.textContent = "fetch failed";
     fileOk.className = "pill err";
     setStatus(`Fetch load failed: ${e.message}\n\nEnsure files are in the same directory.`);

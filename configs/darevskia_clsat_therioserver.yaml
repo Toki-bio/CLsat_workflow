@@ -16,10 +16,10 @@ genomes:
   val: /home/toki/satpipe_darevskia/genomes/GCA_034642135.1_Dar_val_2.0_genomic.fna
 
 families:
-  CLsat1: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat1.cons.fa, mono: 146, colour: "#1f77b4"}
-  CLsat2: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat2.cons.fa, mono: 145, colour: "#ff7f0e"}
-  CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#2ca02c"}
-  CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#d62728"}
+  CLsat1: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat1.cons.fa, mono: 146, colour: "#60a5fa"}
+  CLsat2: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat2.cons.fa, mono: 145, colour: "#34d399"}
+  CLsat3: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat3.cons.fa, mono: 146, colour: "#f472b6"}
+  CLsat4: {consensus: ../satpipe/stages/02_seed_expansion_scan/consensus/CLsat4.cons.fa, mono: 116, colour: "#fbbf24"}
 
 # The published cluster numbers do not describe this run's Step-8 clustering (the Step-4 coverage fix
 # changed 17 of 7,546 motifs, so vsearch numbered the clusters differently; stage 09 detects this).
