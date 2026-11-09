@@ -421,6 +421,7 @@
 
       <div class="hint" id="detailHint"><b style="color:#fbbf24;">Bars are overlaid, not stacked</b> &mdash; every family's track is drawn at each scan window position with the tallest behind, so each colour&rsquo;s height is that family&rsquo;s own bitscore, not a cumulative total. Colors = CLsat consensus.
         <span style="color:#5a6070;font-weight:600;">&#9632; grey</span> = background/noise (below 50 bits) &mdash; shown in the flanks and at internal breaks so a real hit can be judged against the floor, and so &ldquo;no satellite&rdquo; is distinguishable from &ldquo;not scanned&rdquo;.
+        <span style="color:#64748b;font-weight:600;">&#9636; hatched</span> in the scaffold view = not searched (only loci and their flanks were scanned).
         <span style="color:#ff5c5c;font-weight:600;">&#9632; red</span> in the scaffold view = contig edge: the array is truncated by the assembly, so that boundary is <b>not</b> a biological array end.
         <br><span style="color:#94a3b8;">Segment boundaries</span> are placed on a 1&nbsp;kb grid, at the edge of the first bin in which the competing subfamily dominates, and may therefore sit up to 1&nbsp;kb before the per-window signal transition.</div>
     </div>
@@ -2276,7 +2277,8 @@ let scaffoldBySpecies = new Map();
 let lociBySpScf = new Map();
 
 // Overview chart state
-let svgOver, gMainOver, gAxisOver, gLociOver, gBarsOver, zoomOver;
+let svgOver, gMainOver, gAxisOver, gLociOver, gBarsOver, gUnscanOver, zoomOver;
+let overviewScanned = [];   // [from, to] stretches that have scan windows (loci + their flank windows)
 let xScaleOver, xAxisOver, xScaleOverBase;
 let baseDomainOver = [0,1];
 let currentOver = null;
@@ -2636,8 +2638,15 @@ function initOverviewChart(){
   svgOver = d3.select("#chartOverview").append("svg").attr("width", w).attr("height", h);
   gMainOver = svgOver.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
   gMainOver.append("rect").attr("x",0).attr("y",0).attr("width",innerW).attr("height",innerH).attr("fill","#070b12");
-  svgOver.append("defs").append("clipPath").attr("id","overPlotClip")
+  const defsOver = svgOver.append("defs");
+  defsOver.append("clipPath").attr("id","overPlotClip")
     .append("rect").attr("x",0).attr("y",0).attr("width",innerW).attr("height",innerH);
+  // owner 2026-11-09: stretches that were never searched are shaded, so they do not read as "searched, nothing there"
+  const hatch = defsOver.append("pattern").attr("id","unscanHatch").attr("patternUnits","userSpaceOnUse")
+    .attr("width",8).attr("height",8).attr("patternTransform","rotate(45)");
+  hatch.append("rect").attr("width",8).attr("height",8).attr("fill","#1b2230");
+  hatch.append("rect").attr("width",3).attr("height",8).attr("fill","#2a3344");
+  gUnscanOver = gMainOver.append("g").attr("class","unscanned").attr("clip-path","url(#overPlotClip)");
   gBarsOver = gMainOver.append("g").attr("class","bars")   // bars layer, clipped as above
     .attr("clip-path","url(#overPlotClip)");
   gLociOver = gMainOver.append("g").attr("class","loci");  // locus outlines on top
@@ -2698,6 +2707,14 @@ function drawOverview(){
   for (const w of overviewWindows){
     w.best  = Math.max(0, ...FAMILIES.map(f => w[f] || 0));
     w.noise = w.best < SAT_BITS;
+  }
+  // stretches with scan windows; a gap of more than 3 window steps between windows = not searched there
+  overviewScanned = [];
+  for (const w of overviewWindows){
+    const a = w.pos - WINDOW_STEP, b = w.pos + 2 * WINDOW_STEP;
+    const last = overviewScanned[overviewScanned.length - 1];
+    if (last && a <= last[1] + WINDOW_STEP) last[1] = Math.max(last[1], b);
+    else overviewScanned.push([a, b]);
   }
   const satW = overviewWindows.filter(w => !w.noise);
   overviewMaxBits = Math.max(1, ...(satW.length ? satW : overviewWindows).map(w => w.best));
@@ -2842,6 +2859,29 @@ function renderOverview(){
 
   // same overlay z-order guard as the detail chart (see renderDetail)
   allBars.order();
+
+  // ---- NOT SEARCHED (hatched) ----------------------------------------------
+  {
+    const Lc = scafLen.get(key(currentOver.sp, currentOver.scf));
+    const lo = Math.max(xmin, 0), hi = Lc ? Math.min(xmax, Lc) : xmax;
+    const gaps = [];
+    let cur = lo;
+    for (const [a, b] of overviewScanned){
+      if (b <= cur) continue;
+      if (a > cur) gaps.push([cur, Math.min(a, hi)]);
+      cur = Math.max(cur, b);
+      if (cur >= hi) break;
+    }
+    if (cur < hi) gaps.push([cur, hi]);
+    const uSel = gUnscanOver.selectAll("rect.unscan").data(gaps.filter(g => g[1] > g[0]));
+    uSel.exit().remove();
+    const uEnt = uSel.enter().append("rect").attr("class","unscan");
+    uEnt.append("title");
+    const uAll = uEnt.merge(uSel)
+      .attr("x", d => xScaleOver(d[0])).attr("width", d => Math.max(0, xScaleOver(d[1]) - xScaleOver(d[0])))
+      .attr("y", 0).attr("height", innerH).attr("fill", "url(#unscanHatch)");
+    uAll.select("title").text(d => `not searched: ${fmt(Math.round(d[0]))}-${fmt(Math.round(d[1]))} (no scan window here; only loci and their flanks were scanned)`);
+  }
 
   // ---- CONTIG EDGES -------------------------------------------------------
   // A locus that runs into the end of its scaffold is TRUNCATED BY THE ASSEMBLY: that
