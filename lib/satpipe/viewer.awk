@@ -293,15 +293,21 @@ function phase_manifest(   p, c) {
 }
 
 # rows: steps 1-2 (viewer.py:61-89): MASTER.merged.bed; rows.tsv; candidate rows for the assignment and bits copies
-function phase_rows(   line, seg, n, i, k, f, out, bed, s, rows, cid, sn, tmp, fa, fb, j, fam, b, bits) {
+function phase_rows(   hd, line, seg, n, i, k, f, out, bed, s, rows, cid, sn, tmp, fa, fb, j, fam, b, bits) {
     vw_load_cfg()
     seg = ENVIRON["VW_RUN"] "/catalogue/MASTER.loci.segmented.bed"
     n = vw_read_tsv(seg, rows, 1)
     for (i = 1; i <= n; i++) if (split(rows[i], f, "\t") < 5)
         vfail("viewer: MASTER.loci.segmented.bed has no genome column (col 5); it was written by an older satpipe. Rerun from 14_arbitrate.")
+    # loci removed by the stage-16 haplotype-duplicate rule are not in regions/locus_master.tsv: no viewer row
+    hd = ENVIRON["VW_RUN"] "/regions/hapdup.tsv"
+    while ((getline line < hd) > 0) { k = split(line, f, "\t"); if (k >= 10 && f[10] == "REMOVED") HD_GONE[f[1]] = 1 }
+    close(hd)
     NR_ROWS = 0
     for (i = 1; i <= n; i++) {
-        split(rows[i], f, "\t"); NR_ROWS++
+        split(rows[i], f, "\t")
+        if (f[4] in HD_GONE) continue
+        NR_ROWS++
         R_SCF[NR_ROWS] = f[1]; R_S[NR_ROWS] = vw_int_s(f[2]); R_E[NR_ROWS] = vw_int_s(f[3]); R_SP[NR_ROWS] = f[5]; R_LID[NR_ROWS] = f[4]
     }
     vw_load_cand()

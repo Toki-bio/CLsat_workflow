@@ -56,6 +56,12 @@ viewer_main() {
     _vw_awk rows || exit 1
     _vw_copy "$RUN/catalogue/MASTER.final_assignment.tsv" "$out/MASTER.final_assignment.clean.tsv"
     _vw_copy "$RUN/catalogue/MASTER.locus_bits.tsv" "$out/MASTER.locus_bits.tsv"
+    if [ -f "$RUN/regions/hapdup.tsv" ]; then    # drop loci removed by the haplotype-duplicate rule (stage 16)
+        for _hdf in MASTER.final_assignment.clean.tsv MASTER.locus_bits.tsv; do
+            gawk -F'\t' 'NR == FNR { if ($10 == "REMOVED") gone[$1] = 1; next } !($1 in gone)' \
+                "$RUN/regions/hapdup.tsv" "$out/$_hdf" > "$VW_TMP/hd.$_hdf" && mv -- "$VW_TMP/hd.$_hdf" "$out/$_hdf" || exit 1
+        done
+    fi
     if [ -n "$cand" ]; then
         cat -- "$VW_TMP/cand_assign.tsv" >> "$out/MASTER.final_assignment.clean.tsv"
         cat -- "$VW_TMP/cand_bits.tsv" >> "$out/MASTER.locus_bits.tsv"
