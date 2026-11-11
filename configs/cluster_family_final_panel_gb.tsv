@@ -1,0 +1,10 @@
+# cluster	family	note
+# run_gb (GenBank uni pair unv/unn), 2026-11-09: author-approved table of 2026-10-23 renumbered by member/centroid match to run_z3 (41->43 at 95.9% centroid id, others identical centroids); families unchanged
+21	CLsat2	z3_cluster=19 size=980 votes={'CLsat2': 948, 'CLsat1': 31} centroid_best=CLsat2 174.1 bits 100.00%
+37	CLsat3	z3_cluster=35 size=83 votes={'CLsat1': 37, 'CLsat3': 45} centroid_best=CLsat3 163.6 bits 97.95%
+38	CLsat1	z3_cluster=36 size=530 votes={'CLsat1': 485, 'CLsat3': 22, 'CLsat2': 22} centroid_best=CLsat1 146.1 bits 97.93%
+40	CLsat3	z3_cluster=38 size=24 votes={'CLsat3': 13, 'CLsat1': 3} centroid_best=CLsat3 135.2 bits 89.73%
+42	CLsat3	z3_cluster=40 size=3 votes={'CLsat3': 3} centroid_best=CLsat1 121.4 bits 84.14% BORDERLINE
+43	CLsat1	z3_cluster=41 size=95 votes={'CLsat1': 95} centroid_best=CLsat1 141.4 bits 88.97%
+65	CLsat1	z3_cluster=62 size=5 votes={'CLsat1': 5} centroid_best=CLsat1 125.1 bits 98.43%
+84	CLsat4	z3_cluster=82 size=35 votes={'CLsat1': 27, 'CLsat2': 2, 'CLsat4': 5} centroid_best=CLsat4 134.9 bits 100.00%
