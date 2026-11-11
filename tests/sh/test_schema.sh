@@ -45,7 +45,7 @@ t_defaults_are_published_values() {
     # published configs pin tandem_mask/single_copy/repeat_mask false, clear_margin 0, reciprocal false, extend_steps []
     [ "$(typ orthology/tandem_mask)" = bool ] && [ "$(val orthology/tandem_mask)" = True ] && [ "$(val orthology/single_copy)" = True ]         && numeq orthology/copy_min_pid 80.0 && numeq orthology/copy_min_aln 0 && numeq orthology/clear_margin 0.9         && [ "$(val orthology/reciprocal)" = True ] && [ "$(val orthology/repeat_mask)" = True ] && numeq orthology/mask_min_aln 100 || return 1
     [ "$(typ orthology/extend_steps)" = list ] && [ "$(val orthology/extend_steps)" = 3 ] && [ "$(val orthology/extend_steps/0)" = 600 ]         && [ "$(val orthology/extend_steps/1)" = 3000 ] && [ "$(val orthology/extend_steps/2)" = 5000 ] || return 1
-    numeq subfamily/confident_delta 10.0 || return 1
+    numeq subfamily/confident_delta 10.0 && streq subfamily/method boundary || return 1
     [ "$(keys scan)" = "win_mono step_mono min_bits" ] && numeq scan/win_mono 2 && numeq scan/step_mono 1 && numeq scan/min_bits 0.0
 }
 check test_defaults_are_published_values t_defaults_are_published_values

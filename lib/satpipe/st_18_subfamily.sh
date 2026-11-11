@@ -6,13 +6,20 @@
 plan_18_subfamily() {                                                  # run.py:986-988
     emit_inputs "$RUN/regions/"{locus_master.tsv,terminal_monomers.tsv,manifest.tsv,all_regions.fa} "$RUN/tables/members.tsv"
     subx_inputs
+    # method bins reads the locus sequences from the genomes (method boundary: the plan of run.py, unchanged)
+    if [ "$(_p8_subfamily_method)" = bins ]; then emit_inputs "$RUN/tables/genomes.tsv"; genome_files; fi
     param_cfg_or_null subfamily subfamily                              # {'subfamily': cfg.get('subfamily')}
 }
 
 st_18_subfamily() {
     local reg=$RUN/regions                                             # run.py:971 (no mkdir)
     subx_dir                                                           # run.py:973 (writes tables/subx/ for a FASTA)
-    if [ -n "$SUBX" ]; then
+    local method; method=$(_p8_subfamily_method)
+    if [ -n "$SUBX" ] && [ "$method" = bins ]; then
+        # subfamily.method: bins - whole-array call from 1-kb pieces (not in run.py; owner's decision 2026-11-11)
+        sh_run 18_subfamily "" -- bash "$SCRIPTS/05_subfamily_terminal_boundary/assign_subfamily_bins.sh" "$reg" "$SUBX" \
+            "$RUN/tables/members.tsv" "$RUN/tables/genomes.tsv" "$(cfg expansion/jobs)"
+    elif [ -n "$SUBX" ]; then
         sh_run 18_subfamily "" -- bash "$SCRIPTS/05_subfamily_terminal_boundary/assign_subfamily.sh" "$reg" "$SUBX" \
             "$RUN/tables/members.tsv"                                                           # run.py:974-976
     else
@@ -25,4 +32,5 @@ st_18_subfamily() {
     sh_run 18_subfamily "" CONFIDENT_DELTA="$(_p8_confident_delta)" -- \
         python3 "$SCRIPTS/05_subfamily_terminal_boundary/build_subfam_term_json.py" "$reg" "$RUN/tables/families.tsv"
     emit_outputs "$reg/"{locus_subfamily.tsv,subfamily.json,terminal_monomers.json}          # run.py:983
+    if [ -n "$SUBX" ] && [ "$method" = bins ]; then emit_outputs "$reg/subfamily_bins.tsv"; fi
 }

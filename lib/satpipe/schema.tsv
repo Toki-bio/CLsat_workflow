@@ -76,12 +76,13 @@ orthology/repeat_mask	bool	False		bool	true	True	True											default	Instead 
 orthology/mask_min_aln	int	False		int	100	100	100	1										default	Shortest repeated piece that repeat_mask masks.
 orthology/extend_steps	list	False	int	list	[600, 3000, 5000]	[600, 3000, 5000]	[600, 3000, 5000]											default	Extend on demand: flanks still unresolved (tandem / masked / satellite / low-complexity / telomeric) are retried at the next length; a flank stops at the middle of the gap to the next locus. [] = one length, flank_bp. Needs repeat_mask. The owner's rule 2026-11-08: [600, 3000, 5000].
 orthology/extend_steps/<item>	int	False		null	null	None	None	1										default	
-subfamily	block	False		null	null	None	None											default	Sub-subfamily assignment at array boundaries.
+subfamily	block	False		null	null	None	None											default	Sub-subfamily assignment (at the array boundary, or over the whole array: `method`).
 subfamily/consensuses	path	False		null	null	None	None											default	Directory of per-sub-subfamily consensus FASTA files (`subx/` in the Darevskia run) or one multi-record FASTA. Optional: without it the stage is skipped.
 subfamily/members	map	False	list	null	null	None	None						^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$				default	Family -> list of its sub-subfamily names (the FAMSUBS table). Each family listed must exist in `families`.
 subfamily/members/<key>	list	False	str	null	null	None	None										1	default	
 subfamily/members/<key>/<item>	str	False		null	null	None	None				^[A-Za-z0-9_.\-]+$	^[A-Za-z0-9_.-]+$						default	
-subfamily/confident_delta	float	False		int	10	10	10	0										default	Bits margin over the second-best sub-subfamily for a confident call.
+subfamily/confident_delta	float	False		int	10	10	10	0										default	Margin over the second-best sub-subfamily for a confident call: bits with method `boundary`, percentage points of the share with method `bins`.
+subfamily/method	enum	False		str	"boundary"	boundary	'boundary'								['boundary', 'bins']			default	How a locus gets its sub-subfamily. `boundary` (the published rule, `assign_subfamily.sh`): the 2-monomer window at the array boundary, highest bits wins. `bins` (`assign_subfamily_bins.sh`, owner's decision 2026-11-11): the whole array in 1-kb pieces (a last piece under 300 bp is dropped), each piece searched against the sub-subfamily consensuses of the locus family; the locus takes the sub-subfamily that wins the most piece length (equal lengths: the one first reached from the locus start). `locus_subfamily.tsv` keeps its 9 columns (bits = share x 100, delta in percentage points, pct_id NA) and gains share, counted_bp, n_pieces, runner_up, runner_share; the pieces are in `regions/subfamily_bins.tsv`. ssearch36 threads: `expansion.jobs`.
 terminal	block	False		null	null	None	None											default	Terminal-monomer and boundary-phase measurement.
 terminal/window_mono	float	False		float	1.5	1.5	1.5	0		True								default	Window into the array from each terminus, in monomers.
 terminal/edge_tol	int	False		int	10	10	10	0										default	EDGE_TOL: tolerated gap between alignment and array edge, bp.

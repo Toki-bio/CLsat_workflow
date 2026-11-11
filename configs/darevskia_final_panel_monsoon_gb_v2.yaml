@@ -25,6 +25,7 @@ finalisation:
   trf_timeout: 600
   min_piece_bp: 20000
 subfamily:
+  method: bins   # whole-array call from 1-kb pieces (owner 2026-11-11); the published rule is `boundary`
   members:
     CLsat1: [CLsat1.1, CLsat1.2, CLsat1.3, CLsat1.4, CLsat1.5]
     CLsat2: [CLsat2]

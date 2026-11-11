@@ -38,6 +38,8 @@ JSON. Conversions live in `make_bed_from_clsats_headers.sh:25`, `clisat_expand_t
 | orthology | `flank_orthologs.json`, matrix | JSON / TSV | | pairs counted per locus pair (53), not per flank link (76); best hit per target assembly applies to the matrix |
 | subfamily | `manifest.tsv` | `locus kind sp scf rs re trunc explen` (kinds LF/LB/RB/RF) | 1-based | from `run_extract.sh`; `all_regions.fa` holds the sequences |
 | subfamily | `locus_subfamily.tsv` | `locus major subfamily pct_id aln_len bits second second_bits delta` | | bitscores compared as floats |
+| subfamily | `locus_subfamily.tsv`, `subfamily.method: bins` | same 9 columns + `share counted_bp n_pieces runner_up runner_share` | | `subfamily` = the sub-subfamily winning the most 1-kb piece length; `bits` = share x 100, `delta` = lead over the runner-up in percentage points, `pct_id` NA, `aln_len` = bp of the pieces with a hit |
+| subfamily | `subfamily_bins.tsv` (method bins) | `copy locus start end family best bits second second_bits`, one row per 1-kb piece | offsets inside the locus, 0-based half-open | best/second sub-subfamily of the piece by ssearch36 bits; NA = no hit |
 | subfamily | `subfamily.json` | JSON, per locus `{major, subfamily, pid, bits, second, delta, confident}` | | confident if delta >= `confident_delta` or no competitor |
 | subfamily | `terminal_monomers.tsv` / `.json` | `cons_start cons_end covered partial strand edge_gap pct_id` per terminus | consensus coordinates 1-based | rewritten 2026-10-15; phase read at the array edge |
 | finalisation | `chunk_coords.tsv`, `chunks/chunk_N.{fa,dat}` | | 1-based | 2 Mb chunks, 50 kb overlap, one scaffold |

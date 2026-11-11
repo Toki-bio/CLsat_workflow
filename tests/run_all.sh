@@ -2,7 +2,7 @@
 # tests/run_all.sh - the test suite of the bash driver, plain bash (no bats). Exit 0 only when every test passes.
 #   1. pytest for the stage-script tests that stay Python (PORT_SPEC 5e): tests/test_monomerize.py, tests/test_flank_rules.py
 #      (+ tests/test_flank_copy.py when present)
-#   2. every tests/sh/test_*.sh (bash tests of the driver: schema, check, config, anchor, subx)
+#   2. every tests/sh/test_*.sh (bash tests of the driver: schema, check, config, anchor, subx; subfam_bins = the bins stage script on stub tools)
 #   (the tests/port/ equivalence harness against the Python driver was removed at the switch-over, WP14; it lives at tag
 #   python-driver-final)
 # Usage: tests/run_all.sh [--only NAME_SUBSTRING]

@@ -53,3 +53,8 @@ subx_dir() {
 _p8_confident_delta() {
     case $(cfg_type subfamily/confident_delta 2>/dev/null) in int|float) cfg subfamily/confident_delta ;; *) printf '10' ;; esac
 }
+
+# _p8_subfamily_method   subfamily.method: boundary (the published rule; also when the key is absent) or bins
+_p8_subfamily_method() {
+    case $(cfg_type subfamily/method 2>/dev/null) in str) cfg subfamily/method ;; *) printf 'boundary' ;; esac
+}

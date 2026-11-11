@@ -2,7 +2,8 @@
 """Build subfamily.json, terminal_monomers.json and terminal_hist.json for the viewer.
 
 Usage: build_subfam_term_json.py <work_dir> <families.tsv>
-  work_dir      holds locus_subfamily.tsv (assign_subfamily.sh) and terminal_monomers.tsv
+  work_dir      holds locus_subfamily.tsv (assign_subfamily.sh or assign_subfamily_bins.sh; the first 9 columns
+                are read) and terminal_monomers.tsv
                 (terminal_monomers.sh); receives the three JSON files
   families.tsv  family  mono  [consensus.fa]
 Environment: CONFIDENT_DELTA  bits margin over the second-best sub-subfamily for a confident call [10]
@@ -32,7 +33,7 @@ with open(f"{W}/locus_subfamily.tsv") as f:
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 9: continue
-        lid, major, sub, pid, aln, bits, second, sbits, delta = p
+        lid, major, sub, pid, aln, bits, second, sbits, delta = p[:9]   # method bins appends columns
         subfam[lid] = {
             "major": major,
             "subfamily": None if sub == "NA" else sub,

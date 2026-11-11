@@ -163,6 +163,9 @@ catalogue and returns the identical result.
 
 `assign_subfamily.sh` (2-monomer boundary window vs doubled sub-subfamily
 consensuses, Δ≥10 bits = confident; bitscores compared as floats since 2026-10-15),
+`assign_subfamily_bins.sh` (`subfamily.method: bins`, 2026-11-11: the whole array in 1-kb pieces, each piece
+against the sub-subfamily consensuses of the locus family; the locus takes the sub-subfamily that wins the most
+piece length; `boundary`, the published rule above, stays the default),
 `terminal_monomers.sh` (rewritten 2026-10-15: window vs doubled consensus, strand recorded,
 phase read at the array edge — the earlier version reported the best-scoring monomer in the
 window, not the terminal one), `boundary_phase.sh`,
