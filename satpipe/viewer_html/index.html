@@ -3021,7 +3021,7 @@ function selectLocus(l){
       if (sf && sf.subfamily){ sfLabel = sf.subfamily + (sf.confident ? "" : "?"); }
       badge.textContent = sfLabel + " | " + short;
       badge.title = (sf && sf.subfamily)
-        ? ("Sub-subfamily " + sf.subfamily + " (" + sf.pid + "% id, " + sf.bits + " bits" + (sf.second ? ("; 2nd: " + sf.second + " d=" + sf.delta) : "") + ")" + (sf.confident ? "" : " - low confidence"))
+        ? ("Sub-subfamily " + sf.subfamily + (sf.pid == null || sf.pid === "NA" ? (" (" + sf.bits + "% of the array in 1-kb pieces" + (sf.second ? ("; 2nd: " + sf.second + " " + (sf.bits - sf.delta).toFixed(1) + "%") : "") + ")") : (" (" + sf.pid + "% id, " + sf.bits + " bits" + (sf.second ? ("; 2nd: " + sf.second + " d=" + sf.delta) : "") + ")")) + (sf.confident ? "" : " - low confidence"))
         : ("Major family " + a.seed);
       badge.style.background = col;
       badge.style.color = "#0b0f17";
@@ -4189,7 +4189,7 @@ function showFlanks(){
   if (sfd && sfd.subfamily){
     html += `<div style="margin-bottom:6px; font-size:11px;">Sub-subfamily: `
           + `<b style="color:${CLSAT_COLORS[sfd.major]||'#9ca3af'};">${sfd.subfamily}</b> `
-          + `<span style="color:#64748b;">(${sfd.pid}% id` + (sfd.second ? `, 2nd ${sfd.second} d=${sfd.delta}` : ``) + `)${sfd.confident?'':' - low conf'}</span></div>`;
+          + `<span style="color:#64748b;">(` + ((sfd.pid == null || sfd.pid === "NA") ? `${sfd.bits}% of array` + (sfd.second ? `, 2nd ${sfd.second} ${(sfd.bits - sfd.delta).toFixed(1)}%` : ``) : `${sfd.pid}% id` + (sfd.second ? `, 2nd ${sfd.second} d=${sfd.delta}` : ``)) + `)${sfd.confident?'':' - low conf'}</span></div>`;
   }
   // Show the terminal-monomer record only when it plausibly belongs to this locus: the
   // record must carry the monomer length of the locus's assigned family.
