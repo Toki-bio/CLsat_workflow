@@ -528,11 +528,42 @@ function applyViewerConfig(cfg){
   if (mi && ASM_ORDER.length) mi.innerHTML = 'A locus-resolved browser for the satellite arrays catalogued across ' + ASM_ORDER.length +
     ' assemblies (<span class="k">' + ASM_ORDER.map(esc_).join(", ") + '</span>) in run <span class="k">' + esc_(cfg.run_name || "") + '</span>. Every array in the catalogue is a ' +
     '<b>segmented MASTER locus</b> &mdash; a contiguous satellite-similar domain, split where the dominant family changes along the array.';
+  fillManualCounts();
   console.log("[viewer] config applied: " + FAMILIES.length + " families, " + ASM_ORDER.length + " assemblies, lists " +
               ORTHO_LOCI.length + "/" + FLAGGED_LOCI.length + "/" + FULL_TABLE.length);
 }
 
-const VIEWER_VERSION = "v3.1-config-20261112";
+/** In-page manual: every count and locus name of the run comes from the lists in viewer_config.json. */
+function fillManualCounts(){
+  const cat = FLAGGED_LOCI.filter(d => d.cat !== "CANDIDATE_UNCATALOGUED"), cand = FLAGGED_LOCI.length - cat.length;
+  const nOf = c => cat.filter(d => d.cat === c).length;
+  const contra = cat.filter(d => d.cat === "UNIQUE_SEED_CONTRADICTION").map(d => d.id);
+  const ids = a => a.slice(0, 8).join(", ") + (a.length > 8 ? ", \u2026" : "");
+  const pl = (n, one, many) => n + " " + (n === 1 ? one : many);
+  const other = [
+    [nOf("SEGMENT_RESOLVED_AMBIGUOUS"), "ambiguous segment call", "ambiguous segment calls"],
+    [nOf("SEED_CONFLICT_RESOLVED_AMBIGUOUS"), "ambiguous seed-conflict call", "ambiguous seed-conflict calls"],
+    [nOf("NO_SEED_RESOLVED"), "locus resolved without an initial seed", "loci resolved without an initial seed"],
+    [nOf("NO_SEED_AMBIGUOUS"), "locus without a seed and with a small margin", "loci without a seed and with a small margin"],
+  ].filter(x => x[0] > 0).map(x => pl(x[0], x[1], x[2]));
+  const known = contra.length + nOf("SEGMENT_RESOLVED_AMBIGUOUS") + nOf("SEED_CONFLICT_RESOLVED_AMBIGUOUS") + nOf("NO_SEED_RESOLVED") + nOf("NO_SEED_AMBIGUOUS");
+  if (cat.length > known) other.push(pl(cat.length - known, "locus with another flag", "loci with another flag"));
+  const v = {
+    ortho: ORTHO_LOCI.length,
+    has: ORTHO_LOCI.filter(d => d.n > 0).length,
+    priv: ORTHO_LOCI.filter(d => d.n === 0).length,
+    priv2: ORTHO_LOCI.filter(d => d.n === 0 && d.nuf === 2).length,
+    maxasm: Math.max(0, ...ORTHO_LOCI.map(d => Object.keys(d.partners || {}).length)),
+    full: FULL_TABLE.filter(d => !String(d.id).startsWith("C")).length,
+    flagcat: cat.length,
+    candtxt: cand ? " (plus the " + pl(cand, "uncatalogued candidate", "uncatalogued candidates") + ", listed for inspection)" : "",
+    contratxt: contra.length ? pl(contra.length, "locus", "loci") + " (" + ids(contra) + ")" : "none in this run",
+    othertxt: other.length ? other.join(", ") : "none",
+  };
+  document.querySelectorAll(".mrun").forEach(e => { if (e.dataset.k in v) e.textContent = v[e.dataset.k]; });
+}
+
+const VIEWER_VERSION = "v3.2-config-20261112";
 console.log("%c[CLsat Viewer] " + VIEWER_VERSION + " loaded", "color:#f59e0b; font-weight:bold; font-size:14px;");
 // Show version in UI header
 document.addEventListener('DOMContentLoaded', () => {
@@ -4557,7 +4588,7 @@ function bindEndsFlanksUI(){
       <b>Scaffold Overview</b>. You can also type an ID (e.g. <code>L152</code>) into <b>Find locus</b> and press <b>Go</b>.</li>
     <li><span class="k">2. Zoom in.</span> Mouse-wheel to zoom, drag to pan. Zoom until individual monomers resolve &mdash;
       monomer-level tools need the array to be readable, not the whole scaffold.</li>
-    <li><span class="k">3. Get FASTA.</span> Fetches the locus sequence from NCBI E-utilities (nothing runs locally).</li>
+    <li><span class="k">3. Get FASTA.</span> Fetches the locus sequence from NCBI E-utilities (nothing runs locally). This works only for assemblies whose contig names are GenBank accessions; for the others use <b>Copy BED</b> and cut the sequence from your own copy of the assembly.</li>
     <li><span class="k">4. Analyze Monomers.</span> Splits the fetched sequence into individual monomers.</li>
     <li><span class="k">5. Inspect below.</span> Monomer list &rarr; monomer map &rarr; MSA &rarr; terminal-monomer trim.</li>
   </ul>
@@ -4624,27 +4655,26 @@ function bindEndsFlanksUI(){
   <p>Three sets, opened from the buttons in the sidebar. In all three, <b>clicking any row opens that locus</b>, and
   partner/ortholog chips jump straight to the partner locus in another genome.</p>
   <ul>
-    <li><b>Orthologous loci</b> &mdash; the <b>91</b> loci with at least one usable unique flank, scored by how many
-      other lineages they are positionally orthologous to (flank identity &ge;80%, &ge;200&nbsp;bp; single best hit per
-      target assembly). <b>58</b> have at least one partner; <b>33</b> are private. In this six-assembly set the most a
-      locus reaches is <b>two</b> other lineages (no flank is anchorable in more), so the presets are: has an ortholog,
+    <li><b>Orthologous loci</b> &mdash; the <b class="mrun" data-k="ortho">&hellip;</b> loci of this run with at least one usable unique flank, scored by how many
+      other lineages they are positionally orthologous to (the rule of the run &mdash; flank lengths, identity and
+      length thresholds &mdash; is stated at the top of the list). <b class="mrun" data-k="has">&hellip;</b> have at least one partner; <b class="mrun" data-k="priv">&hellip;</b> are private.
+      In this run the most a locus reaches is <b class="mrun" data-k="maxasm">&hellip;</b> other assemblies. The presets are: has an ortholog,
       in both other lineages, private, and <b>strictly private</b> &mdash; both flanks unique yet no ortholog anywhere
-      (2 loci). The &ldquo;Orthologous to&rdquo; column reads <i>distinct assemblies, then total partner loci</i>,
+      (<b class="mrun" data-k="priv2">&hellip;</b> loci). The &ldquo;Orthologous to&rdquo; column reads <i>distinct assemblies, then total partner loci</i>,
       because one locus can have several partner loci inside the same assembly. Positional conservation does not imply
-      conserved content &mdash; many orthologous positions carry a <i>different</i> CLsat family in the two lineages.</li>
-    <li><b>Flank orthology table</b> &mdash; the full per-locus table for <b>all 627</b> catalogue loci (plus L541, which has no anchorable flank) (every assembly), with the
+      conserved content &mdash; an orthologous position can carry a <i>different</i> family in the two lineages.</li>
+    <li><b>Flank orthology table</b> &mdash; the full per-locus table for all <b class="mrun" data-k="full">&hellip;</b> catalogue loci (every assembly), with the
       sub-subfamily call and both flanks' cross-assembly orthology status. Filter by anchorable / has-ortholog /
       both-sided / same- vs different-family partner. L and R badges give each flank's class (blue = unique/anchorable,
       amber = low-complexity, grey = truncated, pink = satellite-adjacent, purple = telomeric; with the single-copy rule
       also orange = mostly tandem repeat, red = another copy in its own genome, slate = mostly masked repeated pieces,
       none of them an anchor); a red-bordered partner
       chip flags a different-family ortholog.</li>
-    <li><b>Flagged loci</b> &mdash; 28 catalogue loci annotated by arbitration (plus the 7 uncatalogued candidates C1&ndash;C7, listed for inspection) for one of three different reasons, not all equally noteworthy:
-      <b>L186</b> is the only genuine <b>seed/rescan contradiction</b> (rescan favours a different family by &ge;20 bits) and
-      is the one case worth treating as an open question. The other 27 are not errors: 24 segment-boundary calls and 2
-      seed-conflict calls sit within a flat 15-bit margin of their runner-up family (expected near real subfamily
-      transitions, and the margin varies widely underneath that cutoff &mdash; see &Delta;), plus 1 locus (L540) resolved
-      confidently without an initial seed. Columns show the seed call and its bitscore, the strongest competitor and its
+    <li><b>Flagged loci</b> &mdash; <b class="mrun" data-k="flagcat">&hellip;</b> catalogue loci annotated by arbitration<span class="mrun" data-k="candtxt"></span>, for different reasons, not all equally noteworthy.
+      A <b>seed/rescan contradiction</b> (the rescan favours a different family by &ge;20 bits) is the case worth treating as an
+      open question: <span class="mrun" data-k="contratxt">&hellip;</span>. The others are not errors: <span class="mrun" data-k="othertxt">&hellip;</span>.
+      Ambiguous calls sit within the ambiguity margin of their runner-up family (15 bits unless the run set another value; expected near real subfamily
+      transitions, and the margin varies widely underneath that cutoff &mdash; see &Delta;). Columns show the seed call and its bitscore, the strongest competitor and its
       bitscore, and the margin &Delta; between them.</li>
   </ul>
 
@@ -4670,7 +4700,7 @@ function bindEndsFlanksUI(){
   <table>
     <tr><th>Flag</th><th>Meaning</th></tr>
     <tr><td><code>UNIQUE_SEED_WITH_COMPETITOR</code></td><td>Clean seed call; a competitor scores but does not threaten it.</td></tr>
-    <tr><td><code>UNIQUE_SEED_CONTRADICTION</code></td><td class="tagC">The rescan confidently favours a <b>different</b> family than the seed (&Delta;&nbsp;&ge;&nbsp;20 bits). Only 1 locus (L186) &mdash; the one genuine contradiction in the catalogue.</td></tr>
+    <tr><td><code>UNIQUE_SEED_CONTRADICTION</code></td><td class="tagC">The rescan confidently favours a <b>different</b> family than the seed (&Delta;&nbsp;&ge;&nbsp;20 bits). In this run: <span class="mrun" data-k="contratxt">&hellip;</span>.</td></tr>
     <tr><td><code>SEED_CONFLICT_RESOLVED</code></td><td>Seeds from more than one subfamily fell in the locus; resolved by bitscore.</td></tr>
     <tr><td><code>SEED_CONFLICT_RESOLVED_AMBIGUOUS</code></td><td class="tagQ">As above, but the margin is small.</td></tr>
     <tr><td><code>SEGMENT_RESOLVED</code></td><td>Locus split at a sustained subfamily transition; each segment called cleanly.</td></tr>
