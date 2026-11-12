@@ -257,6 +257,7 @@
     <div class="row">
       <label></label>
       <button id="fullTableBtn" class="listBtn">Flank orthology table</button>
+      <button id="stackBtn" class="listBtn" style="display:none">Ortholog stacks</button>
     </div>
 
     <h2>Locus Table</h2>
@@ -420,6 +421,7 @@
 
       <div class="hint" id="detailHint"><b style="color:#fbbf24;">Bars are overlaid, not stacked</b> &mdash; every family's track is drawn at each scan window position with the tallest behind, so each colour&rsquo;s height is that family&rsquo;s own bitscore, not a cumulative total. Colors = CLsat consensus.
         <span style="color:#5a6070;font-weight:600;">&#9632; grey</span> = background/noise (below <span id="satBitsTxt">50</span> bits) &mdash; shown in the flanks and at internal breaks so a real hit can be judged against the floor, and so &ldquo;no satellite&rdquo; is distinguishable from &ldquo;not scanned&rdquo;.
+        <span style="color:#64748b;font-weight:600;">&#9636; hatched</span> in the scaffold view = not searched (only loci and their flanks were scanned).
         <span style="color:#ff5c5c;font-weight:600;">&#9632; red</span> in the scaffold view = contig edge: the array is truncated by the assembly, so that boundary is <b>not</b> a biological array end.
         <br><span style="color:#94a3b8;">Segment boundaries</span> are placed on a 1&nbsp;kb grid, at the edge of the first bin in which the competing subfamily dominates, and may therefore sit up to 1&nbsp;kb before the per-window signal transition.</div>
     </div>
@@ -512,6 +514,7 @@ function applyViewerConfig(cfg){
   FLAGGED_LOCI.sort((a,b)=>(a.cat==="UNIQUE_SEED_CONTRADICTION")===(b.cat==="UNIQUE_SEED_CONTRADICTION")?0:(a.cat==="UNIQUE_SEED_CONTRADICTION"?-1:1));
   LIST_NOTES = Object.assign({ortho:"", flag:"", full:""}, cfg.notes || {});
   LIST_COUNTS = cfg.counts || {};
+  { const sb = document.getElementById("stackBtn"); if (sb) sb.style.display = cfg.stacks ? "" : "none"; }
   // DOM: title, legend, family / sub-subfamily filter
   const title = cfg.title || "Satellite locus viewer";
   document.title = title;
@@ -560,10 +563,13 @@ function fillManualCounts(){
     contratxt: contra.length ? pl(contra.length, "locus", "loci") + " (" + ids(contra) + ")" : "none in this run",
     othertxt: other.length ? other.join(", ") : "none",
   };
+  const lf = VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta;
+  if (lf) v.fastatxt = "Reads the locus sequence stored with this viewer (each locus with " + (lf.flank || 0).toLocaleString() +
+    " bp of flank on each side, cut from its own assembly); a view wider than the stored piece is clipped to it.";
   document.querySelectorAll(".mrun").forEach(e => { if (e.dataset.k in v) e.textContent = v[e.dataset.k]; });
 }
 
-const VIEWER_VERSION = "v3.2-config-20261112";
+const VIEWER_VERSION = "v3.3-config-20261112";
 console.log("%c[CLsat Viewer] " + VIEWER_VERSION + " loaded", "color:#f59e0b; font-weight:bold; font-size:14px;");
 // Show version in UI header
 document.addEventListener('DOMContentLoaded', () => {
@@ -2312,7 +2318,8 @@ let scaffoldBySpecies = new Map();
 let lociBySpScf = new Map();
 
 // Overview chart state
-let svgOver, gMainOver, gAxisOver, gLociOver, gBarsOver, zoomOver;
+let svgOver, gMainOver, gAxisOver, gLociOver, gBarsOver, gUnscanOver, zoomOver;
+let overviewScanned = [];   // [from, to] stretches that have scan windows (loci + their flank windows)
 let xScaleOver, xAxisOver, xScaleOverBase;
 let baseDomainOver = [0,1];
 let currentOver = null;
@@ -2703,8 +2710,15 @@ function initOverviewChart(){
   svgOver = d3.select("#chartOverview").append("svg").attr("width", w).attr("height", h);
   gMainOver = svgOver.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
   gMainOver.append("rect").attr("x",0).attr("y",0).attr("width",innerW).attr("height",innerH).attr("fill","#070b12");
-  svgOver.append("defs").append("clipPath").attr("id","overPlotClip")
+  const defsOver = svgOver.append("defs");
+  defsOver.append("clipPath").attr("id","overPlotClip")
     .append("rect").attr("x",0).attr("y",0).attr("width",innerW).attr("height",innerH);
+  // owner 2026-11-09: stretches that were never searched are shaded, so they do not read as "searched, nothing there"
+  const hatch = defsOver.append("pattern").attr("id","unscanHatch").attr("patternUnits","userSpaceOnUse")
+    .attr("width",8).attr("height",8).attr("patternTransform","rotate(45)");
+  hatch.append("rect").attr("width",8).attr("height",8).attr("fill","#1b2230");
+  hatch.append("rect").attr("width",3).attr("height",8).attr("fill","#2a3344");
+  gUnscanOver = gMainOver.append("g").attr("class","unscanned").attr("clip-path","url(#overPlotClip)");
   gBarsOver = gMainOver.append("g").attr("class","bars")   // bars layer, clipped as above
     .attr("clip-path","url(#overPlotClip)");
   gLociOver = gMainOver.append("g").attr("class","loci");  // locus outlines on top
@@ -2768,6 +2782,14 @@ function drawOverview(){
   for (const w of overviewWindows){
     w.best  = Math.max(0, ...FAMILIES.map(f => w[f] || 0));
     w.noise = w.best < SAT_BITS;
+  }
+  // stretches with scan windows; a gap of more than 3 window steps between windows = not searched there
+  overviewScanned = [];
+  for (const w of overviewWindows){
+    const a = w.pos - WINDOW_STEP, b = w.pos + 2 * WINDOW_STEP;
+    const last = overviewScanned[overviewScanned.length - 1];
+    if (last && a <= last[1] + WINDOW_STEP) last[1] = Math.max(last[1], b);
+    else overviewScanned.push([a, b]);
   }
   const satW = overviewWindows.filter(w => !w.noise);
   overviewMaxBits = Math.max(1, ...(satW.length ? satW : overviewWindows).map(w => w.best));
@@ -2912,6 +2934,29 @@ function renderOverview(){
 
   // same overlay z-order guard as the detail chart (see renderDetail)
   allBars.order();
+
+  // ---- NOT SEARCHED (hatched) ----------------------------------------------
+  {
+    const Lc = scafLen.get(key(currentOver.sp, currentOver.scf));
+    const lo = Math.max(xmin, 0), hi = Lc ? Math.min(xmax, Lc) : xmax;
+    const gaps = [];
+    let cur = lo;
+    for (const [a, b] of overviewScanned){
+      if (b <= cur) continue;
+      if (a > cur) gaps.push([cur, Math.min(a, hi)]);
+      cur = Math.max(cur, b);
+      if (cur >= hi) break;
+    }
+    if (cur < hi) gaps.push([cur, hi]);
+    const uSel = gUnscanOver.selectAll("rect.unscan").data(gaps.filter(g => g[1] > g[0]));
+    uSel.exit().remove();
+    const uEnt = uSel.enter().append("rect").attr("class","unscan");
+    uEnt.append("title");
+    const uAll = uEnt.merge(uSel)
+      .attr("x", d => xScaleOver(d[0])).attr("width", d => Math.max(0, xScaleOver(d[1]) - xScaleOver(d[0])))
+      .attr("y", 0).attr("height", innerH).attr("fill", "url(#unscanHatch)");
+    uAll.select("title").text(d => `not searched: ${fmt(Math.round(d[0]))}-${fmt(Math.round(d[1]))} (no scan window here; only loci and their flanks were scanned)`);
+  }
 
   // ---- CONTIG EDGES -------------------------------------------------------
   // A locus that runs into the end of its scaffold is TRUNCATED BY THE ASSEMBLY: that
@@ -3730,20 +3775,22 @@ function bindUIOnce(){
     btn.disabled = true;
     btn.textContent = "Fetching...";
     resultBox.classList.add("show");
-    statusEl.textContent = "Fetching from NCBI...";
+    statusEl.textContent = (VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Reading the locus FASTA..." : "Fetching from NCBI...";
     seqEl.textContent = "";
     seqEl.dataset.region = "";   // which region the box holds; Analyze Monomers may reuse it only for that region
     copyBtn.style.display = "none";
     
     try {
-      const fasta = await fetchNCBIFasta(scf, start, end);
+      const got = await fetchSeq(scf, start, end, L0);
       if (currentLocus !== L0) return;   // another locus was selected meanwhile: its panel is not ours to fill
-      console.log("[FASTA] ✓ Success! Received", fasta.length, "characters");
-      statusEl.textContent = `${scf}:${start}-${end} (${end - start + 1} bp)`;
+      const fasta = got.text;
+      console.log("[FASTA] ✓ Success! Received", fasta.length, "characters from", got.src);
+      statusEl.textContent = `${scf}:${got.start}-${got.end} (${got.end - got.start + 1} bp, from ${got.src})` + (got.note ? "; " + got.note : "");
       seqEl.textContent = fasta;
-      seqEl.dataset.region = `${L0.sp}|${scf}:${start}-${end}`;
+      // the box is reused by Analyze Monomers only for the view it was asked for, and only when nothing was clipped
+      seqEl.dataset.region = got.note ? "" : `${L0.sp}|${scf}:${start}-${end}`;
       copyBtn.style.display = "inline-block";
-      setStatus(`FASTA sequence fetched from NCBI:\n${scf}:${start}-${end}\n${fasta.length} characters`);
+      setStatus(`FASTA sequence from ${got.src}:\n${scf}:${got.start}-${got.end}\n${fasta.length} characters` + (got.note ? "\n" + got.note : ""));
       
       // Setup copy FASTA button
       copyBtn.onclick = ()=>{
@@ -3762,7 +3809,7 @@ function bindUIOnce(){
       console.error("[FASTA] ✗ FAILED:", e);
       console.error("[FASTA] Error details:", e.message, e.stack);
       statusEl.textContent = "Error: " + e.message;
-      seqEl.textContent = "Failed to fetch sequence. Make sure the scaffold name is a valid NCBI accession (e.g., NC_123456 or NW_123456).\n\nAlternatively, use the 'Copy BED' button and run:\n  bedtools getfasta -fi genome.fa -bed coords.bed";
+      seqEl.textContent = ((VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Failed to read the locus FASTA stored with this viewer." : "Failed to fetch sequence. Make sure the scaffold name is a valid NCBI accession (e.g., NC_123456 or NW_123456).") + "\n\nAlternatively, use the 'Copy BED' button and run:\n  bedtools getfasta -fi genome.fa -bed coords.bed";
       setStatus(`FASTA fetch failed: ${e.message}`);
     } finally {
       btn.disabled = false;
@@ -3804,7 +3851,7 @@ function bindUIOnce(){
     btn.disabled = true;
     btn.textContent = "Analyzing...";
     resultBox.classList.add("show");
-    mStatusEl.textContent = "Fetching sequence from NCBI...";
+    mStatusEl.textContent = (VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? "Reading the locus FASTA..." : "Fetching sequence from NCBI...";
     listEl.innerHTML = "";
     alignEl.textContent = "";
     copyBtn.style.display = "none";
@@ -3819,8 +3866,9 @@ function bindUIOnce(){
       start = Math.max(1, start - TRIM_FLANK_PAD);
       end = end + TRIM_FLANK_PAD;
       try {
-        sequence = await fetchNCBIFasta(scf, start, end);
-        console.log("[MONOMER] Got sequence from NCBI:", sequence.length, "chars");
+        const got = await fetchSeq(scf, start, end, L0);
+        sequence = got.text; start = got.start; end = got.end;   // offsets below count from what really came back
+        console.log("[MONOMER] Got sequence from", got.src + ":", sequence.length, "chars", got.note);
       } catch (e) {
         console.warn("[MONOMER] NCBI fetch failed:", e.message);
         // Check if FASTA was already fetched and is displayed
@@ -3983,6 +4031,39 @@ function clampToContig(l, start, end){
   const sl = scafLen.get(key(l.sp, l.scf));
   if (isFinite(sl) && sl > 0 && end > sl) end = sl;
   return [Math.max(1, start), end];
+}
+
+/** Sequence for scf:start-end of the current locus. Reads seq/<locus>.fa.gz written by satpipe (viewer.locus_fasta:
+ *  the locus +/- the flank view, cut from its own assembly) and slices it; NCBI only when the run has no such file.
+ *  Returns {text, start, end, src, note}: start/end are what was really returned (the view clipped to the stored piece). */
+const LOCUS_SEQ_CACHE = new Map();
+async function fetchSeq(scf, start, end, L = currentLocus){
+  const lf = VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta;
+  if (lf && L && L.scf === scf){
+    const id = L.id;
+    let rec = LOCUS_SEQ_CACHE.get(id);
+    if (!rec){
+      const txt = await fetchTextMaybeGz((lf.dir || "seq") + "/" + id + ".fa");
+      const nl = txt.indexOf("\n");
+      const m = /^>(\S+)\s+(\S+)\s+(\S+):(\d+)-(\d+)/.exec(txt.slice(0, nl));
+      if (!m) throw new Error("locus FASTA for " + id + " has no range in its header");
+      rec = {scf: m[3], a: +m[4], b: +m[5], seq: txt.slice(nl + 1).replace(/\s+/g, "")};
+      if (rec.seq.length !== rec.b - rec.a + 1) throw new Error("locus FASTA for " + id + ": length does not match its header");
+      LOCUS_SEQ_CACHE.set(id, rec);
+    }
+    if (rec.scf === scf){
+      const s = Math.max(start, rec.a), e = Math.min(end, rec.b);
+      if (e < s) throw new Error("the view " + scf + ":" + start + "-" + end + " is outside the stored piece " + rec.a + "-" + rec.b);
+      const seq = rec.seq.slice(s - rec.a, e - rec.a + 1);
+      let fa = ">" + scf + ":" + s + "-" + e + "\n";
+      for (let i = 0; i < seq.length; i += 60) fa += seq.slice(i, i + 60) + "\n";
+      const note = (s > start || e < end) ? ("view clipped to the stored piece " + scf + ":" + rec.a + "-" + rec.b +
+                    " (locus \u00b1 " + (lf.flank || 0).toLocaleString() + " bp)") : "";
+      return {text: fa.trim(), start: s, end: e, src: "the locus FASTA stored with this viewer", note};
+    }
+  }
+  const text = await fetchNCBIFasta(scf, start, end);
+  return {text, start, end, src: "NCBI", note: ""};
 }
 
 async function fetchNCBIFasta(accession, start, end) {
@@ -4588,7 +4669,7 @@ function bindEndsFlanksUI(){
       <b>Scaffold Overview</b>. You can also type an ID (e.g. <code>L152</code>) into <b>Find locus</b> and press <b>Go</b>.</li>
     <li><span class="k">2. Zoom in.</span> Mouse-wheel to zoom, drag to pan. Zoom until individual monomers resolve &mdash;
       monomer-level tools need the array to be readable, not the whole scaffold.</li>
-    <li><span class="k">3. Get FASTA.</span> Fetches the locus sequence from NCBI E-utilities (nothing runs locally). This works only for assemblies whose contig names are GenBank accessions; for the others use <b>Copy BED</b> and cut the sequence from your own copy of the assembly.</li>
+    <li><span class="k">3. Get FASTA.</span> <span class="mrun" data-k="fastatxt">Fetches the locus sequence from NCBI E-utilities (nothing runs locally). This works only for assemblies whose contig names are GenBank accessions; for the others use Copy BED and cut the sequence from your own copy of the assembly.</span></li>
     <li><span class="k">4. Analyze Monomers.</span> Splits the fetched sequence into individual monomers.</li>
     <li><span class="k">5. Inspect below.</span> Monomer list &rarr; monomer map &rarr; MSA &rarr; terminal-monomer trim.</li>
   </ul>
@@ -4848,6 +4929,144 @@ function bindEndsFlanksUI(){
 })();
 </script>
 
+<!-- Ortholog stacks (satpipe viewer.ortho_stack, owner 2026-11-09): schematic + ViewAlign text mode -->
+<style>
+  #stackModal .cbox{width:min(1500px,96vw);height:90vh;display:flex;flex-direction:column;}
+  #stackWrap{display:flex;flex:1;min-height:0;}
+  #stackList{width:230px;overflow:auto;border-right:1px solid #24344d;font-size:12px;}
+  #stackList .it{padding:5px 8px;cursor:pointer;border-bottom:1px solid #1e293b;color:#cbd5e1;}
+  #stackList .it:hover{background:#1e293b;} #stackList .it.sel{background:#1e3a5f;color:#fff;}
+  #stackList .w{color:#fbbf24;}
+  #stackMain{flex:1;overflow:auto;padding:10px 14px;font-size:12px;color:#cbd5e1;}
+  #stackMain .note{color:#94a3b8;margin:4px 0 8px 0;line-height:1.45;max-width:1100px;}
+  #stackMain .warn{color:#fbbf24;margin:2px 0;}
+  #stackMain a{color:#93c5fd;}
+  #stackMain .lab{cursor:pointer;}
+  #stackSearch{margin:6px 8px;width:calc(100% - 16px);}
+</style>
+<div id="stackModal" class="cmodal"><div class="cbox">
+  <div class="chead"><div class="ctitle">Ortholog stacks</div>
+    <button class="cclose" id="stackClose" title="Close (Esc)">&times;</button></div>
+  <div id="stackWrap">
+    <div id="stackList"></div>
+    <div id="stackMain">Loading…</div>
+  </div>
+</div></div>
+<script>
+(function(){
+  const modal = document.getElementById("stackModal");
+  const listEl = document.getElementById("stackList"), mainEl = document.getElementById("stackMain");
+  let STACKS = null, cur = null, refRow = 0, fillList = null;
+  const VA = "https://toki-bio.github.io/MSA-viewer/";
+  const e = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const spl = sp => (typeof SPECIES_LABEL !== "undefined" && SPECIES_LABEL[sp]) || sp;
+  function ident(g, side, a, b){
+    const I = g.flank[side].ident;
+    return I[a + "|" + b] || I[b + "|" + a] || [];
+  }
+  function openStacks(){
+    modal.classList.add("open");
+    if (STACKS) return;
+    fetch((VIEWER_CONFIG.stacks && VIEWER_CONFIG.stacks.file) || "stacks.json").then(r => r.json()).then(j => {
+      STACKS = j; drawList(); if (j.groups.length) select(0);
+    }).catch(err => { mainEl.textContent = "stacks.json could not be read: " + err; });
+  }
+  function drawList(){
+    listEl.innerHTML = '<input id="stackSearch" placeholder="locus or genome">';
+    const box = document.createElement("div");
+    listEl.appendChild(box);
+    fillList = () => {
+      const q = document.getElementById("stackSearch").value.trim().toLowerCase();
+      box.innerHTML = "";
+      STACKS.groups.forEach((g, i) => {
+        const txt = g.id + " " + g.rows.map(r => r.id + " " + r.sp + " " + spl(r.sp)).join(" ");
+        if (q && !txt.toLowerCase().includes(q)) return;
+        const d = document.createElement("div");
+        d.className = "it" + (cur === i ? " sel" : "");
+        d.innerHTML = "<b>" + g.id + "</b> " + (g.warn.length ? '<span class="w" title="' + e(g.warn.join("; ")) + '">⚠</span>' : "")
+          + "<br>" + g.rows.map(r => e(r.id) + " <span style='color:#94a3b8'>" + e(spl(r.sp)) + "</span>").join(" · ");
+        d.onclick = () => select(i);
+        box.appendChild(d);
+      });
+    };
+    document.getElementById("stackSearch").addEventListener("input", fillList);
+    fillList();
+  }
+  function select(i){ cur = i; refRow = 0; if (fillList) fillList(); draw(); }
+  function draw(){
+    const g = STACKS.groups[cur], W = STACKS.window, rows = g.rows, ref = rows[refRow];
+    const nL = g.flank.L.n, nR = g.flank.R.n, ncol = g.ncol;
+    const ww = 6, labW = 270, rowH = 22, gap = 10;
+    const cw = Math.max(3, Math.min(16, Math.floor(700 / Math.max(1, ncol))));
+    const xA = labW + nL * ww + gap, xR = xA + ncol * cw + gap, Wd = xR + nR * ww + 10;
+    const H = 34 + rows.length * rowH + 6;
+    let s = '<svg width="' + Wd + '" height="' + H + '" style="font:11px ui-monospace,monospace;background:#0b1220">';
+    s += '<text x="' + labW + '" y="14" fill="#94a3b8">left flank</text>';
+    s += '<text x="' + xA + '" y="14" fill="#94a3b8">array: ' + ncol + ' monomer columns</text>';
+    s += '<text x="' + xR + '" y="14" fill="#94a3b8">right flank</text>';
+    rows.forEach((r, ri) => {
+      const y = 26 + ri * rowH, h = rowH - 6;
+      s += '<g class="lab" data-ri="' + ri + '"><text x="4" y="' + (y + 12) + '" fill="' + (ri === refRow ? "#fbbf24" : "#e2e8f0") + '">'
+        + (ri === refRow ? "★ " : "☆ ") + e(r.id) + " " + e(spl(r.sp)) + " " + (r.ori === "+" ? "→" : "←") + " " + r.mono_boxes.length + " mono</text>"
+        + "<title>Click: make this row the reference for the flank colours. Shift+click: show the locus in the genome view. "
+        + e(r.name) + "; family " + e(r.fam) + "; flank classes L " + e(r.lcls) + ", R " + e(r.rcls)
+        + (r.ori === "-" ? "; reverse-complemented to read like the first row" : "") + "</title></g>";
+      for (const side of ["L", "R"]){
+        const n = side === "L" ? nL : nR, pr = r[side], id = ri === refRow ? null : ident(g, side, ref.id, r.id);
+        for (let w = 0; w < n; w++){
+          const x = side === "L" ? xA - gap - (w + 1) * ww : xR + w * ww;
+          const letters = pr.letters[w];
+          if (!letters) continue;
+          const m = pr.masked[w], p = id ? id[w] : null;
+          let fill, op = 1, tip;
+          if (m != null && m > 0.5){ fill = "#6b7280"; tip = "masked " + Math.round(m * 100) + " %"; }
+          else if (ri === refRow){ fill = "#e2e8f0"; op = 0.55; tip = "reference row"; }
+          else if (p == null){ fill = "#1e293b"; tip = "too few letters to compare"; }
+          else if (p < 80){ fill = "#0b1220"; tip = p + " % to " + ref.id + " (below 80 %)"; }
+          else { fill = "#3b82f6"; op = 0.15 + 0.85 * (p - 80) / 20; tip = p + " % to " + ref.id; }
+          s += '<rect x="' + x + '" y="' + y + '" width="' + (ww - 1) + '" height="' + h + '" fill="' + fill + '" fill-opacity="' + op.toFixed(2)
+            + '" stroke="#334155" stroke-width="0.4"><title>' + (side === "L" ? "left" : "right") + " flank, columns " + (w * W + 1) + "-" + ((w + 1) * W)
+            + " from the array edge: " + letters + " letters; " + e(tip) + (m && m <= 0.5 ? "; masked " + Math.round(m * 100) + " %" : "") + "</title></rect>";
+        }
+      }
+      const col = (typeof CLSAT_COLORS !== "undefined" && CLSAT_COLORS[r.fam]) || "#60a5fa";
+      for (const [c, len, anc, py, pd, od] of r.mono_boxes){
+        const bw = Math.max(1, (cw - 1) * Math.min(1, len / r.mono));
+        s += '<rect x="' + (xA + c * cw) + '" y="' + y + '" width="' + bw.toFixed(1) + '" height="' + h + '" fill="' + col + '" fill-opacity="' + (anc ? 0.95 : 0.3)
+          + '"' + (anc ? "" : ' stroke="' + col + '" stroke-dasharray="2 2" stroke-width="0.8"') + "><title>" + e(r.id) + " monomer, " + len + " letters; "
+          + (anc ? (ri === 0 ? "first row (columns follow its monomers)" : "paired with the first row's monomer " + py + ": " + pd + " letters differ; closest other monomer of the first row: "
+                 + (od == null ? "none similar" : od + " letters differ"))
+                 : "no clear partner: left-shifted" + (pd != null ? " (closest monomer of the first row: " + pd + " letters differ; next: " + (od == null ? "none similar" : od) + ")" : ""))
+          + "</title></rect>";
+      }
+    });
+    s += "</svg>";
+    const base = new URL("stack/" + g.id, location.href).href;
+    const va = VA + "?url=" + encodeURIComponent(base + ".fa") + "&title=" + encodeURIComponent("Ortholog stack " + g.id)
+      + "&bed=" + encodeURIComponent(base + ".bed") + "&mask=" + encodeURIComponent(base + ".mask.json");
+    let h = "<div><b>" + g.id + "</b> · " + rows.length + " loci · pairs: " + g.pairs.map(p => p.join("–")).join(", ")
+      + ' · <a href="' + va + '" target="_blank" rel="noopener">open the letters in ViewAlign</a>'
+      + ' · <a href="stack/' + g.id + '.fa" download>FASTA</a></div>';
+    g.warn.forEach(w => { h += '<div class="warn">⚠ ' + e(w) + "</div>"; });
+    h += '<div class="note">Rows are turned to read the same way as the first row (← = reverse complement). Flanks: windows of ' + W
+      + " alignment columns counted from the array edge; blue strength = identity to the reference row ★ (click a row label to change it), pale at 80 %, full at 100 %; "
+      + "dark = below 80 %; grey = more than half of the letters masked (satellite, tandem or repeated piece; masks cover the letters stage 19 examined). "
+      + "Monomer boxes in the family colour: solid = paired with the first row's monomer in that column (monomers paired in order along the array; "
+      + "kept only when that partner differs by at least " + STACKS.gain + " letters fewer than any other monomer of the first row); faint dashed = left-shifted, partner not resolved. Arrays over " + STACKS.max_mono + " monomers are not compared monomer by monomer. "
+      + "Hover a window or box for numbers.</div>";
+    mainEl.innerHTML = h + s;
+    mainEl.querySelectorAll("g.lab").forEach(el => el.addEventListener("click", ev => {
+      const ri = +el.dataset.ri;
+      if (ev.shiftKey){ modal.classList.remove("open"); jumpToLocusId(rows[ri].id); return; }
+      refRow = ri; draw();
+    }));
+  }
+  document.getElementById("stackClose").addEventListener("click", () => modal.classList.remove("open"));
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") modal.classList.remove("open"); });
+  window.openStacks = openStacks;
+  document.getElementById("stackBtn").addEventListener("click", openStacks);
+})();
+</script>
 </body>
 </html>
 
