@@ -569,7 +569,7 @@ function fillManualCounts(){
   document.querySelectorAll(".mrun").forEach(e => { if (e.dataset.k in v) e.textContent = v[e.dataset.k]; });
 }
 
-const VIEWER_VERSION = "v3.3-config-20261112";
+const VIEWER_VERSION = "v3.4-config-20261112";
 console.log("%c[CLsat Viewer] " + VIEWER_VERSION + " loaded", "color:#f59e0b; font-weight:bold; font-size:14px;");
 // Show version in UI header
 document.addEventListener('DOMContentLoaded', () => {
@@ -3883,7 +3883,10 @@ function bindUIOnce(){
           start = viewStart; end = viewEnd;   // exactly the box's region (the pad is smaller at a contig start, audit #17)
           console.log("[MONOMER] Using previously fetched FASTA (unpadded):", sequence.length, "chars");
         } else {
-          throw new Error("Cannot fetch sequence from NCBI. Click 'Get FASTA' for this exact view first, then try again.");
+          // with stored locus FASTA there is no NCBI and Get FASTA would read the same file: give the real reason (audit mv #2)
+          throw new Error((VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta)
+            ? "Cannot read the locus sequence stored with this viewer: " + e.message
+            : "Cannot fetch sequence from NCBI. Click 'Get FASTA' for this exact view first, then try again.");
         }
       }
 
@@ -4015,7 +4018,7 @@ function bindUIOnce(){
       mStatusEl.textContent = "Error: " + e.message;
       listEl.innerHTML = '<div style="color:#fb7185; padding:8px;">' +
         'Analysis failed: ' + e.message + '<br><br>' +
-        'Tip: Click \'Get FASTA\' first to fetch the sequence, then try \'Analyze Monomers\' again.' +
+        ((VIEWER_CONFIG && VIEWER_CONFIG.locus_fasta) ? '' : 'Tip: Click \'Get FASTA\' first to fetch the sequence, then try \'Analyze Monomers\' again.') +
         '</div>';
       setStatus('Monomer analysis failed: ' + e.message);
     } finally {
@@ -4968,7 +4971,9 @@ function bindEndsFlanksUI(){
     modal.classList.add("open");
     if (STACKS) return;
     fetch((VIEWER_CONFIG.stacks && VIEWER_CONFIG.stacks.file) || "stacks.json").then(r => r.json()).then(j => {
-      STACKS = j; drawList(); if (j.groups.length) select(0);
+      STACKS = j; drawList();
+      if (j.groups.length) select(0);
+      else document.getElementById("stackMain").textContent = "This run has no ortholog groups.";   // was left at "Loading…" (audit mv #8)
     }).catch(err => { mainEl.textContent = "stacks.json could not be read: " + err; });
   }
   function drawList(){
