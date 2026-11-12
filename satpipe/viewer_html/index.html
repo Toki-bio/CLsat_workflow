@@ -2325,15 +2325,19 @@ function busy(msg){
   if (!_busyEl){
     _busyEl = document.createElement("div");
     _busyEl.id = "busyBanner";
-    _busyEl.style.cssText = "position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:300;" +
-      "background:#1e293b; color:#e5e7eb; border:1px solid #3b82f6; border-radius:8px; padding:8px 18px;" +
-      "font-size:13px; box-shadow:0 4px 18px rgba(0,0,0,.55); display:none; pointer-events:none;";
+    _busyEl.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:300;" +
+      "background:#1e293b; color:#e5e7eb; border:1px solid #3b82f6; border-radius:10px; padding:16px 26px;" +
+      "font-size:14px; max-width:70vw; text-align:center; box-shadow:0 6px 28px rgba(0,0,0,.7); display:none; pointer-events:none;";
     document.body.appendChild(_busyEl);
   }
+  if (!msg && _loadMsg) msg = _loadMsg;   // data still loading: a finished redraw must not hide the load box
   if (!msg){ _busyEl.style.display = "none"; clearInterval(_busyTimer); _busyTimer = null; return; }
   if (!_busyTimer){ _busyT0 = Date.now(); _busyTimer = setInterval(_busyPaint, 500); }
   _busyMsg = msg; _busyPaint(); _busyEl.style.display = "block";
 }
+// Message of the data load in progress (null = everything is loaded). The box stays up for the whole load.
+let _loadMsg = null;
+function loading(msg){ _loadMsg = msg || null; busy(_loadMsg); }
 // Show the banner, let the browser paint it, then run the (synchronous) drawing work.
 function withBusy(msg, fn){
   busy(msg);
@@ -3118,6 +3122,11 @@ function drawDetailForLocus(l){
   if (!inLocus.length){
     kpiWindows.textContent = "0";
     kpiMaxBits.textContent = "0";
+    if (_loadMsg){
+      detailTitle.textContent += " (per-window scores are still loading…)";
+      setStatus(statusEl.textContent + "\nPer-window scores are still loading; this locus is redrawn when they arrive.");
+      return;
+    }
     detailTitle.textContent += " (no per-window data)";
     setStatus(statusEl.textContent + "\nNo per-window data found for this locus.");
     return;
@@ -3334,7 +3343,7 @@ async function fetchTextMaybeGz(path){
 
 async function loadViaFetch(){
   setStatus("Loading viewer_config.json…");
-  busy("Loading viewer data: configuration…");
+  loading("Loading viewer data: configuration…");
   fileOk.textContent = "loading…";
   try {
     const cfgText = await fetchText("viewer_config.json");
@@ -3347,7 +3356,7 @@ async function loadViaFetch(){
     throw e;
   }
   setStatus("Loading files via fetch()…");
-  busy("Loading viewer data: locus list…");
+  loading("Loading viewer data: locus list…");
 
   // Load main files
   const [mText, aText, bText] = await Promise.all([
@@ -3383,7 +3392,7 @@ async function loadViaFetch(){
   }
 
   // Flank windows (optional). Same format as the in-locus bits files.
-  busy(`Loading viewer data: ${loci.length} loci listed; flank scores…`);
+  loading(`Loading viewer data: ${loci.length} loci listed; flank scores…`);
   try {
     const t = await fetchTextMaybeGz(FILE_FLANK_BITS);
     const rows = [];
@@ -3408,7 +3417,7 @@ async function loadViaFetch(){
 
   // Load per-window bits files
   const _nTracks = Object.keys(FILE_BITS_CLSAT).length, _doneTracks = [];
-  const _trackMsg = () => busy(`Loading per-window scores: ${_doneTracks.length} of ${_nTracks} families` +
+  const _trackMsg = () => loading(`Loading per-window scores: ${_doneTracks.length} of ${_nTracks} families` +
     (_doneTracks.length ? ` (${_doneTracks.join(", ")} done)` : "") + " — the first visit takes about a minute");
   _trackMsg();
   const perWindowPromises = Object.entries(FILE_BITS_CLSAT).map(async ([clsat, file]) => {
@@ -3440,7 +3449,7 @@ async function loadViaFetch(){
 
   fileOk.textContent = "\u2713 data loaded";
   fileOk.className = "pill ok";
-  busy(null);
+  loading("Loading flank and orthology tables…");
 
   setStatus(
     `Loaded ${loci.length} loci, ${Object.keys(assignments).length} assignments\n` +
@@ -3466,7 +3475,10 @@ async function loadViaFetch(){
     updateAnalysisAvailability();
   } catch(e){ console.warn("analysis JSON load failed:", e.message); }
 
+  loading(null);
   if (hasD3()) drawOverview();
+  // a locus picked while the scores were still loading was drawn empty: draw it again now
+  if (currentLocus && currentOver && currentOver.loci.includes(currentLocus)) selectLocus(currentLocus);
 }
 
 /* ============================================================================
@@ -4389,7 +4401,7 @@ function bindEndsFlanksUI(){
   // No server auto-start needed.
 
   loadViaFetch().catch(e=>{
-    busy(null);
+    loading(null);
     fileOk.textContent = "fetch failed";
     fileOk.className = "pill err";
     setStatus(`Fetch load failed: ${e.message}\n\nEnsure files are in the same directory.`);
