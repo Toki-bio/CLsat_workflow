@@ -94,6 +94,32 @@ def paf_other_copies(paf_lines, self_place, min_pid, min_aln):
     return n
 
 
+def paf_self_found(paf_lines, self_place, min_aln):
+    """Queries whose own place was found by the genome search (a hit of >= min_aln letters on their own scaffold
+    overlapping their own place). A flank whose own place is not found was not really tested: minimap2 drops seeds
+    that are very frequent in the genome, so a high-copy repeat can return no line at all, not even itself
+    (Darevskia run_gb_v2 mix L486_L, 2026-11-15)."""
+    found = set()
+    for line in paf_lines:
+        p = line.rstrip('\n').split('\t')
+        if len(p) < 12:
+            continue
+        q, t, ts, te, block = p[0], p[5], int(p[7]), int(p[8]), int(p[10])
+        sp = self_place.get(q)
+        if sp and block >= min_aln and t == sp[0] and ts < sp[2] and te > sp[1] - 1:
+            found.add(q)
+    return found
+
+
+def longest_unmasked(seq):
+    """Longest run of letters that are not N."""
+    best = run = 0
+    for c in seq:
+        run = 0 if c in 'Nn' else run + 1
+        best = max(best, run)
+    return best
+
+
 def clear_best(hits, margin):
     """hits: [(bits, target_locus, payload...)] of ONE query flank in ONE target genome.
     Best per target locus first (a locus can be hit by both of its flanks); returns the best entry when the

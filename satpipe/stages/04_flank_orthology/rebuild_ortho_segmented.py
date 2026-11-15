@@ -516,14 +516,23 @@ if SINGLE:
                             '-t', str(THREADS), GEN[sp], qfa], capture_output=True, text=True)
         if r.returncode:
             sys.exit('minimap2 failed on %s (exit %d): %s' % (sp, r.returncode, r.stderr.strip()[-300:]))
-        n = FC.paf_other_copies(r.stdout.splitlines(), place, COPY_MIN_PID, COPY_MIN_ALN)
+        lines = r.stdout.splitlines()
+        n = FC.paf_other_copies(lines, place, COPY_MIN_PID, COPY_MIN_ALN)
+        seen = FC.paf_self_found(lines, place, COPY_MIN_ALN)
         for k in ks:
             copies[k][1] = n.get('%d_%s' % k, 0)
+            copies[k].append('%d_%s' % k in seen)
     for k in list(flanks):
         c = copies[k]
         if c[0] or (c[1] or 0):
             c[2] = 'repeated'
             del flanks[k]; fclass[k] = 'repeated'
+        elif len(c) > 3 and not c[3]:
+            # own place not found: not tested. No unmasked stretch can make a min-aln alignment -> masked;
+            # otherwise its seeds were too frequent in its own genome -> repeated (2026-11-15)
+            cls = 'masked' if FC.longest_unmasked(flanks[k][1]) < COPY_MIN_ALN else 'repeated'
+            c[2] = 'noself_' + cls
+            del flanks[k]; fclass[k] = cls
         else:
             c[2] = 'single'
     anchor = set('%d_%s' % k for k in flanks)

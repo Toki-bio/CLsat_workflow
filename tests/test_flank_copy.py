@@ -194,3 +194,20 @@ def test_new_mask_runs_left_flank_is_reverse():
 
 def test_new_mask_runs_nothing_new():
     assert FC.new_mask_runs('ACNN', 'ACNN', 'R', 1, 4) == []
+
+
+def test_paf_self_found_needs_own_place_and_min_aln():
+    place = {'1_L': ('scfA', 1001, 1600), '2_R': ('scfB', 501, 1100)}
+    paf = [
+        '1_L\t600\t0\t566\t+\tscfA\t9000\t1010\t1576\t566\t566\t60',   # own place, 566 letters: found
+        '2_R\t600\t0\t198\t+\tscfB\t9000\t520\t718\t198\t198\t60',     # own place but only 198 letters: not found
+        '2_R\t600\t0\t300\t+\tscfC\t9000\t100\t400\t300\t300\t0',      # another place: not self
+    ]
+    assert FC.paf_self_found(paf, place, 200) == {'1_L'}
+    assert FC.paf_self_found([], place, 200) == set()                 # no line at all (seeds too frequent)
+
+
+def test_longest_unmasked():
+    assert FC.longest_unmasked('N' * 10 + 'A' * 198 + 'NN' + 'C' * 8) == 198
+    assert FC.longest_unmasked('ACGT') == 4
+    assert FC.longest_unmasked('NNNN') == 0
