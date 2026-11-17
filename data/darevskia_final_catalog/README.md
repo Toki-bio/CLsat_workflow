@@ -24,6 +24,10 @@ parental assemblies of D. unisexualis animal 224 and removed by that rule (`hapd
 Arbitration flags: UNIQUE_SEED_WITH_COMPETITOR, UNIQUE_SEED_CONTRADICTION, SEED_CONFLICT_RESOLVED(_AMBIGUOUS),
 SEGMENT_RESOLVED(_AMBIGUOUS), NO_SEED_RESOLVED, NO_SEED_AMBIGUOUS (main text Methods 4.4).
 
+## Read check of the catalog (Additional file 1: Table S5)
+
+`read_check_labels.tsv`: one row per locus of the final catalog (594). Each animal's own HiFi reads were mapped to its assembly or assemblies (minimap2 map-hifi; both assemblies of a hybrid together). Columns: locus, assembly, contig, start (0-based), end, family, length, depth_vs_genome_median (read depth over the array / genome median), reads_crossing_left_end, reads_crossing_right_end (mapping quality >= 20), reads_spanning_array, label. Labels (first that applies): proven_whole (a read spans the array, or spanning reads give a length within 20%); not_checkable (both ends at contig ends); flag_end (an end inside the contig crossed by fewer than 2 reads); flag_high / flag_low (depth above 1.6 / below 0.65 times the median); proven_ends (otherwise). An end counts as a contig end only when the array reaches the contig's first or last base. Table S5 gives the share of CLsat length per label and assembly.
+
 ## DarSat (darsat_gb)
 
 | file | content |
