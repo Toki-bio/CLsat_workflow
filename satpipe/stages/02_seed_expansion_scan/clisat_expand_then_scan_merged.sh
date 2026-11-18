@@ -61,7 +61,7 @@ set -euo pipefail
 #     signal still present, i.e. array continues beyond the cap).
 #     Advances from Phase 1 boundary in large jumps (--probe-monomers*MONO bp).
 #     Signal present -> take the jump. Signal absent -> halve the step.
-#     Stops when step < --probe-min-step*MONO. O(log N) calls.
+#     Stops when step < --probe-min-step*MONO: one call per step while the signal lasts, then one per halving.
 #     Scaffold boundary during probe: clean_pos1 = last confirmed position
 #     (probe_pos), NOT the scaffold edge -- avoids mis-reporting boundary.
 #     Probe window is probe_step wide (>> WIN_BP); the MIN_BITS threshold is the
@@ -122,7 +122,7 @@ set -euo pipefail
 #   loci represent interior TRF fragments of large CLsat blocks. The default
 #   --max-steps 500 caps the dense walk at ~219 kb per side for MONO=146.
 #   CLsat1 arrays can exceed 1 Mb. The coarse+pinpoint probe automatically
-#   extends to the true boundary at O(log N) extra cost.
+#   extends to the true boundary at one call per 100*MONO plus the halvings.
 #
 # REQUIREMENTS
 #   samtools >= 1.12 (for --region-file), ssearch36, bedtools, GNU parallel
