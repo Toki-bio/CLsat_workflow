@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Sub-subfamily assignment from the WHOLE array (subfamily.method: bins; owner's decision 2026-11-11).
+# Sub-subfamily assignment from the WHOLE array (subfamily.method: bins).
 # assign_subfamily.sh reads one 2-monomer window at the array boundary; here every locus is cut into 1-kb pieces,
 # every piece is searched against the sub-subfamily consensuses of the locus's family, and the locus takes the
 # sub-subfamily that wins the most piece length.

@@ -69,7 +69,7 @@ with open(f"{WORK}/manifest.tsv") as f:
             "truncated": trunc == "1", "len": len(seq)
         }
 
-# Mark missing flanks explicitly (start at scaffold edge)
+# Count the loci that have each flank (a flank missing at a scaffold edge stays None)
 n_lf = sum(1 for v in flanks.values() if v["LF"])
 n_rf = sum(1 for v in flanks.values() if v["RF"])
 print(f"loci with LF: {n_lf}, with RF: {n_rf}, total loci: {len(flanks)}")

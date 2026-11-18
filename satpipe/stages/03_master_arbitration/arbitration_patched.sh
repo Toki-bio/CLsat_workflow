@@ -2,7 +2,7 @@
 set -euo pipefail
 export LC_ALL=C   # byte-order sort: locus numbering must not depend on the locale
 
-# arbitration_patched.sh -- Step 14: locus segmentation and family assignment.
+# arbitration_patched.sh -- stage 14_arbitrate: locus segmentation and family assignment.
 #
 # Usage: arbitration_patched.sh <families.tsv> <MASTER.merged.bed> <out_dir>
 #   families.tsv       one row per family, tab-separated, '#' lines ignored:
@@ -11,28 +11,20 @@ export LC_ALL=C   # byte-order sort: locus numbering must not depend on the loca
 #   MASTER.merged.bed  stage-12 output (chrom start end tag [provenance]); locus L<n> = row n; the tag
 #                      starts with the genome code (`sp|scf:s-e|...`), as do the seed and bits rows
 #   out_dir            every output goes here (created)
-# Environment (defaults = published Darevskia run):
+# Environment variables [default]:
 #   DELTA          UNIQUE_SEED contradiction threshold                       [20]
 #   DELTA_AMBIG    CONFLICT / sub-locus / NO_SEED ambiguity threshold          [15]
 #   SEG_BIN        D3b bin width, bp                                           [1000]
 #   SEG_MIN_RUN    bins a competing family must dominate to open a segment     [10]
 #   SEG_MIN_LOCUS  segments shorter than this are dropped or merged (SEG_SHORT) [2000]
-#   SEG_SHORT      drop (published) | merge                                    [drop]
+#   SEG_SHORT      drop | merge                                                [drop]
 #   MAX_GAP_MONO   a run of non-satellite 1-kb bins this long (monomers x the longest family
-#                  monomer) cuts a locus; 0 = never cut (published behaviour)    [0]
+#                  monomer) cuts a locus; 0 = never cut                          [0]
 #   BIN_MIN_BITS   a 1-kb bin is satellite when its best window reaches this        [50]
 #   SCAN_WIN_MONO  stage-13 scan window in monomers (D3 width = this x MONO)  [2]
 #
 # D3 converts each scan row (1-based window start `pos`) to a 0-based BED interval of width
 # 2 x MONO, i.e. the scan window of stage 13 (292/290/292/232 bp for the Darevskia families).
-#
-# Patches vs original:
-#  D3 : pos-1 for 0-based BED start; window = 2 x MONO
-#  D3b: sorted() tiebreak in Python segmentation (deterministic); bins on pos-1 like D3
-#  D6 : three explicit branches: UNIQUE_SEED / SEED_CONFLICT+sub / NO_SEED
-#       sub-loci and SEED_CONFLICT get delta scrutiny via DELTA_AMBIG
-#       NO_SEED uses bitscore winner without phantom 0-delta comparison
-#       branch 3 writes delta = seed - strongest other (same sign as branches 1-2)
 #
 # Output columns (MASTER.final_assignment.tsv): locus_id family assigned_bits best_other
 #                 best_other_bits delta flag provenance(col8)
@@ -111,7 +103,7 @@ done | sort -k1,1 -k2,2n > "$OUT/SEEDS.tagged.bed"
 check_file "$OUT/SEEDS.tagged.bed"
 
 ##############################################################################
-# D3 -- PATCHED: 0-based BED start; window = 2 x MONO
+# D3 -- 0-based BED start; window = 2 x MONO
 ##############################################################################
 log "D3: bits TSV -> BED (pos-1; width 2 x MONO)"
 
@@ -123,7 +115,7 @@ for i in "${!FAMS[@]}"; do
 done
 
 ##############################################################################
-# D3b -- PATCHED: deterministic sorted() tiebreak
+# D3b -- segmentation; deterministic sorted() tiebreak
 ##############################################################################
 log "D3b: segmenting composite loci"
 
@@ -158,7 +150,7 @@ for fam,bf in zip(families,bits_files):
             if bits>bins[scf][b][fam]: bins[scf][b][fam]=bits
     print(f"  Loaded {bf} ({fam})",file=sys.stderr)
 total_seg=0; n_split=0; n_gapcut=0; out=open(out_file,"w")
-# Segments shorter than MIN_LOCUS: the published run DROPPED them (default, SEG_SHORT=drop),
+# Segments shorter than MIN_LOCUS are DROPPED by default (SEG_SHORT=drop),
 # which removes sequence from the catalogue and leaves gaps in segment numbering
 # (e.g. L12.1, L12.3). SEG_SHORT=merge folds each short segment into its longer neighbour
 # instead. Either way every dropped/merged piece is written to <out>.short_segments.bed.
@@ -175,7 +167,7 @@ for scf,start,end,lid in loci:
     dom=[]
     for b in range(bin_start,bin_end+1):
         fb=bins[scf][b]
-        # PATCHED: sorted() for deterministic alphabetical tiebreak
+        # sorted() for deterministic alphabetical tiebreak
         dom.append(max(sorted(fb.keys()),key=fb.get) if fb else None)
     if not dom:
         out.write(f"{scf}\t{start}\t{end}\t{lid}\n"); total_seg+=1; continue
@@ -239,8 +231,8 @@ for scf,start,end,lid in loci:
             out.write(f"{scf}\t{s_bp}\t{e_bp}\t{lid}.{num}\n"); total_seg+=1
 out.close(); short_out.close()
 # family that wins most 1-kb bins of every output locus (bins whose best window reaches BIN_MIN_BITS): the
-# arbitration rule for segments, conflicts and unseeded loci (D6). The locus-wide maximum window alone let one strong
-# window of another family decide a whole segment (author's decision 2026-10-25).
+# arbitration rule for segments, conflicts and unseeded loci (D6). The locus-wide maximum window alone would let one
+# strong window of another family decide a whole segment.
 from collections import Counter
 with open(out_file+".binfam.tsv","w") as bf:
     for line in open(out_file):
@@ -338,7 +330,7 @@ for i in "${!FAMS[@]}"; do
 done
 
 ##############################################################################
-# D6 -- PATCHED: three explicit branches
+# D6 -- three explicit branches
 ##############################################################################
 log "D6: arbitration (three-branch; family of segments, conflicts and unseeded loci = 1-kb bin majority)"
 mv "$LOCI_BED.binfam.tsv" "$OUT/MASTER.locus_binfam.tsv"
@@ -346,11 +338,10 @@ check_file "$OUT/MASTER.locus_binfam.tsv"
 
 # MASTER.locus_binfam.tsv: locus  majority_family  n_bins_won  n_bins  per-family counts  gap_bins  longest_gap_bins
 # (gap_bins = 1-kb bins inside the locus whose best window is under BIN_MIN_BITS)
-# (per-family counts: bins whose best window
-# reaches BIN_MIN_BITS). Branches 1-2 take the majority family (the locus-wide maximum window decided before
-# 2026-10-25, so one strong window of another family could decide a whole segment); its maximum bits and the strongest
-# other family are still reported, delta = assigned - strongest other (may be negative). _AMBIGUOUS: the majority
-# holds less than BIN_SHARE (0.75) of the bins. Without scored bins the old maximum rule is used.
+# (per-family counts: bins whose best window reaches BIN_MIN_BITS). Branches 1-2 take the majority family; its
+# maximum bits and the strongest other family are still reported, delta = assigned - strongest other (may be
+# negative). _AMBIGUOUS: the majority holds less than BIN_SHARE (0.75) of the bins. Without scored bins the family
+# with the highest maximum bits is taken (_AMBIGUOUS when the runner-up is within DELTA_AMBIG).
 gawk -v D="$DELTA" -v DA="$DELTA_AMBIG" -v FAMS="$FAMS_STR" -v SHARE="${BIN_SHARE:-0.75}" 'BEGIN{FS=OFS="\t"; nf=split(FAMS,fam," ")}
 
 ARGIND==1{ bmaj[$1]=$2; bwon[$1]=$3+0; btot[$1]=$4+0; next }

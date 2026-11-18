@@ -3,12 +3,11 @@
 # rotation so that identical monomers in different phases become identical strings before
 # clustering.
 #
-# STRAND=plus (default, the published behaviour): the reverse complement is NOT considered,
-# which matches vsearch's --strand plus in Steps 6 and 8. This is why the single L541 locus,
-# whose TRF motif was reported in the opposite orientation, never clustered (see PIPELINE.md).
-# STRAND=both: the minimum is taken over the rotations of the motif AND of its reverse
-# complement, so opposite-strand reports of the same monomer become identical. Changes the
-# published numbers; opt-in.
+# STRAND=plus (default): the reverse complement is NOT considered, which matches vsearch's
+# --strand plus in Steps 6 and 8. A motif that TRF reported in the opposite orientation
+# therefore does not become identical to the plus-strand reports of the same monomer.
+# STRAND=both (opt-in): the minimum is taken over the rotations of the motif AND of its
+# reverse complement, so opposite-strand reports of the same monomer become identical.
 #
 # Input motifs are uppercase (Step3.sh uppercases), so byte-order comparison is safe.
 #

@@ -40,7 +40,7 @@ done
 
 while IFS=$'\t' read -r lid scf s0 e sp subt mono; do
   genome="${G[$sp]:-}"
-  # a locus whose genome, contig or coordinates do not fit its genome is a catalogue error (once: a locus of one
+  # a locus whose genome, contig or coordinates do not fit its genome is a catalogue error (e.g. a locus of one
   # genome filed under another that shares the contig name); stop instead of silently skipping its regions
   [ -z "$genome" ] && { echo "FATAL: genome $sp of $lid not in $GENOMES" >&2; exit 1; }
   scaflen=$(get_scaflen "$genome" "$scf")

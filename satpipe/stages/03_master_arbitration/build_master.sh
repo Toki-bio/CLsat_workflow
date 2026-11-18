@@ -3,7 +3,7 @@ set -euo pipefail
 die(){ echo "ERROR: $*" >&2; exit 1; }
 export LC_ALL=C   # byte-order sort everywhere, so locus numbering (L1..) does not depend on locale
 
-# Step 12 - MASTER locus universe: union of every family's expanded intervals, merged per
+# stage 12_master - MASTER locus universe: union of every family's expanded intervals, merged per
 # species with family provenance.
 #
 # Usage: build_master.sh [families_expansion.tsv] [out_dir]
@@ -14,8 +14,6 @@ export LC_ALL=C   # byte-order sort everywhere, so locus numbering (L1..) does n
 #                            directory is used and the family name is read from the file name.
 #   out_dir                  [default: ./out]
 # Output: <out_dir>/MASTER.merged.bed  (chrom start end code|SCF:START1-END|MASTER provenance)
-# History: the published catalogue was built from v6full_CLsat1 (cli_v6, fixed --min-aln-frac)
-# and the Jun-12 out_CLsat{2,3,4}_v4 files; see PIPELINE.md.
 TAB="${1:-}"
 OUTD="${2:-${PWD}/out}"
 mkdir -p "$OUTD"

@@ -4,7 +4,7 @@
 # Requires: trf, gawk (PROCINFO["sorted_in"])
 #
 # Usage: Step4.sh <input.fasta>
-# Environment (defaults = published Darevskia run):
+# Environment variables [default]:
 #   TRF_PARAMS          TRF parameters "match mismatch delta PM PI minscore maxperiod"  [2 5 7 80 10 50 2000]
 #   SIMPLE_REPEAT_COV   motifs whose internal TRF coverage exceeds this many bp are
 #                       written to .repeats.fas instead of .clean.fas                 [50]
@@ -26,7 +26,7 @@ command -v gawk >/dev/null 2>&1 || { echo "Error: gawk is required (PROCINFO sor
 # Run TRF. TRF's exit status is not 0 on success in every build (some return the number of
 # sequences processed), so do not let `set -e` abort here; the .dat check below is the real test.
 dat="${fa}.${TRF_PARAMS// /.}.dat"
-rm -f "$dat"   # a .dat left by an earlier run would pass the existence check below (GLM audit #51)
+rm -f "$dat"   # a .dat left by an earlier run would pass the existence check below
 # shellcheck disable=SC2086
 rc=0; trf "$fa" $TRF_PARAMS -h || rc=$?
 # exit >= 125 = killed / crashed: the .dat is partial (lower non-zero codes are normal for some TRF builds)
@@ -40,8 +40,6 @@ function flush(    k, cov, cs, ce, si, ei, first) {
   if (n==0) { print seq, 0; return }
 
   # Visit intervals in ascending order of their START VALUE.
-  # (The earlier asorti(start, idx) sorted the index strings "1","10","11",...,"2", not the
-  #  starts, so for >= 10 TRF hits the merge below double-counted overlaps; fixed 2026-10-15.)
   PROCINFO["sorted_in"] = "@val_num_asc"
   cov=0; first=1
   for (k in start) {
@@ -82,7 +80,7 @@ BEGIN {
 }
 ' "$fa"
 # both outputs always exist: a genome whose motifs are all internal repeats has an EMPTY clean set, it must not
-# vanish from the later stages without a word (GLM audit 2026-10-24)
+# vanish from the later stages without a word
 touch "${fa}.repeats.fas" "${fa}.clean.fas"
 [ -s "${fa}.clean.fas" ] || echo "WARNING: ${fa}: no motif passed the internal-repeat filter (clean set is empty)" >&2
 

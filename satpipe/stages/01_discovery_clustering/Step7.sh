@@ -40,7 +40,7 @@ for infa in "$INPUT_DIR"/*.fa; do
   echo "Aligning $infa with MAFFT..."
   aligned_fasta="$ROTATED_DIR/${base}.aligned.fasta"
   mafft --localpair --maxiterate 1000 --ep 0.123 --nuc --reorder --preservecase --quiet "$infa" > "$aligned_fasta" || {
-    # a cluster that cannot be aligned must stop the stage: skipping it silently drops its loci (GLM audit 2026-10-24)
+    # a cluster that cannot be aligned must stop the stage: skipping it silently drops its loci
     echo "FATAL: MAFFT alignment failed for $infa" >&2
     exit 1
   }

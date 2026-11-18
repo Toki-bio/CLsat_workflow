@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # ============================================================================
-# clisat_expand_then_scan_merged.sh  (cli_v6: fixed --min-aln-frac base; referred to as
-# cli_v6.sh / cli.sh elsewhere in this repository — 06_catalogue_finalize/cli_v6.sh links here)
+# clisat_expand_then_scan_merged.sh  (referred to as cli_v6.sh / cli.sh elsewhere in this
+# repository; 06_catalogue_finalize/cli_v6.sh links here)
 # ============================================================================
 #
 # PURPOSE
@@ -29,9 +29,11 @@ set -euo pipefail
 #                       already-merged intervals and run PASS3 (scan) only.
 #                       Use for 2nd-scan runs on MASTER.merged.bed to avoid
 #                       re-expansion beyond 1st-scan boundaries. Without this
-#                       flag the script re-expands each interval outward by up
-#                       to 3*MONO before scanning, which shifts boundaries
-#                       beyond what the 1st scan established.
+#                       flag the script re-expands each interval outward
+#                       (dense walk in steps of 3*MONO for up to --max-steps
+#                       steps, then the coarse probe) before scanning, which
+#                       can shift boundaries beyond what the 1st scan
+#                       established.
 #
 #   Expansion (PASS 1) -- ignored with --scan-only
 #   --step-monomers N   step size between expansion windows, in monomers [3]
@@ -43,7 +45,8 @@ set -euo pipefail
 #   --min-aln-frac  F   fraction of the WINDOW (WIN_BP = 3*MONO) that must align [0.67]
 #   --min-bits      N   minimum ssearch36 bits score to accept a window [50]
 #   --max-steps     N   hard cap on dense expansion steps per direction [500]
-#                       At step=3*MONO=146 this gives ~217 kb max per side.
+#                       At the default step of 3*MONO (438 bp for MONO=146)
+#                       this gives ~219 kb max per side.
 #                       Set to 0 for unlimited dense walk (no probe needed).
 #   --to-scaffold-ends  Clamp windows to scaffold boundaries and keep walking
 #                       (default: stop at scaffold boundary and record reason).
@@ -67,8 +70,7 @@ set -euo pipefail
 #     (100*MONO = 14.6 kb) inside a long array is bridged, whereas the dense walk
 #     (Phase 1) stops at the first failing 3-monomer window. Arrays that reach
 #     Phase 2 (> MAX_STEPS*STEP_BP ~ 219 kb) therefore have boundaries that are
-#     reproducible only to within a few kb. This is the likely cause of the
-#     split-vs-merged differences on megabase arrays noted in PIPELINE.md.
+#     reproducible only to within a few kb.
 #
 #   Phase 3: dense pinpoint (fires after Phase 2).
 #     Starts ONE STEP beyond probe_pos (probe_pos is already confirmed passing;
@@ -98,25 +100,29 @@ set -euo pipefail
 #                                pos is 1-based; use pos-1 as BED start
 #
 # STOP REASONS (reason_L / reason_R columns)
-#   signal_lost          bits score fell below --min-bits
+#   signal_lost          a dense-walk window had no hit, or its best hit was
+#                        below --min-bits or --min-aln-frac
 #   flip                 alignment strand reversed
-#   past_scaffold_start  walk/probe reached scaffold start; clean_pos1 is
-#                        last confirmed position (not forced to 1)
-#   past_scaffold_end    walk/probe reached scaffold end; clean_pos1 is
-#                        last confirmed position (not forced to L_scaf_len)
+#   past_scaffold_start  dense walk reached the scaffold start with every
+#                        window passing (clean_pos1 = 1), or the coarse probe
+#                        would step past it (clean_pos1 = last confirmed
+#                        probe position, not forced to 1)
+#   past_scaffold_end    the same at the scaffold end (dense walk: clean_pos1
+#                        = L_scaf_len; probe: last confirmed position)
 #   window_invalid       computed window coordinates were invalid
-#   max_steps            dense walk hit cap; probe also exhausted
+#   max_steps            fallback for a walk without a cap (--max-steps 0)
+#                        that ends with no other reason. A capped walk that
+#                        reaches --max-steps with signal still present goes
+#                        on to the coarse probe and reports coarse_probe (or
+#                        past_scaffold_*) instead
 #   coarse_probe         boundary found by coarse probe + dense pinpoint
 #
 # WHY GIANT ARRAYS HIT max_steps
 #   TRF reports short (~2-4 kb) windows even within megabase arrays, so seed
 #   loci represent interior TRF fragments of large CLsat blocks. The default
-#   --max-steps 500 caps expansion at ~217 kb for MONO=146. CLsat1 arrays in
-#   val/unm/unp can exceed 1 Mb. The coarse+pinpoint probe automatically
+#   --max-steps 500 caps the dense walk at ~219 kb per side for MONO=146.
+#   CLsat1 arrays can exceed 1 Mb. The coarse+pinpoint probe automatically
 #   extends to the true boundary at O(log N) extra cost.
-#   Example: unm JAWDKO010000075.1 array ~1 Mb; dense walk stops at 248 kb;
-#   coarse probe (~17 calls) reaches 15 kb; pinpoint (12 calls) finds exact
-#   boundary at 10,439 bp -- 238 kb extra coverage, ~29 total extra calls.
 #
 # REQUIREMENTS
 #   samtools >= 1.12 (for --region-file), ssearch36, bedtools, GNU parallel
@@ -179,10 +185,8 @@ mkdir -p "$OUTDIR"
 
 STEP_BP=$(( STEP_MON * MONO ))
 WIN_BP=$((  WIN_MON  * MONO ))
-# (the query is (QREP+1) copies of the consensus; its length is no longer used — see below)
-# FIX: MIN_ALN is the minimum ALIGNED LENGTH a WINDOW must yield. It must be a fraction of
-# WIN_BP (the window), not of QLEN (the query). With QLEN and MIN_ALN_FRAC=1.0 it demanded a
-# 438-column alignment from a 438bp window -- unsatisfiable, so the expansion never ran.
+# The query is (QREP+1) copies of the consensus. MIN_ALN is the minimum ALIGNED LENGTH a
+# WINDOW must yield: the fraction MIN_ALN_FRAC of WIN_BP (the window), not of the query length.
 MIN_ALN=$(awk -v w="$WIN_BP" -v f="$MIN_ALN_FRAC" 'BEGIN{m=int(w*f); if(m<1)m=1; print m}')
 MIN_BITS_INT=${MIN_BITS%%.*}
 SCAN_MIN_BITS_INT=${SCAN_MIN_BITS%%.*}
@@ -231,12 +235,11 @@ for sp in "${!GENOME_OF[@]}"; do
   printf "%s\t%s\n" "$sp" "${GENOME_OF[$sp]}"
 done > "$GENOME_MAP"
 
-# ss_retry <out> <ssearch36 args...>: run ssearch36; a failure fails the job (it used to be hidden by 2>/dev/null
-# and scored as "no signal").
+# ss_retry <out> <ssearch36 args...>: run ssearch36; a failure fails the job (it is never scored as "no signal").
 # FASTA36 cannot open a file whose path is 120 characters or longer ("cannot open library" with the name cut; 119
-# already misreads it): measured 2026-10-24. The temp paths here hold a PID and $RANDOM, so their length varies and
-# only some calls failed. Every argument that is a file with a path of 100+ characters is therefore passed through a
-# short symlink in /tmp. Two retries remain for genuinely transient errors.
+# already misreads it). The temp paths here hold a PID and $RANDOM, so their length varies. Every argument that
+# is a file with a path of 100+ characters is therefore passed through a short symlink in /tmp. Two retries remain
+# for genuinely transient errors.
 ss_retry(){
   local out="$1"; shift; local k a short="" args=()
   for a in "$@"; do
@@ -249,7 +252,7 @@ ss_retry(){
   done
   for k in 1 2 3; do
     # -z 3: fixed (Altschul-Gish) statistics. With a one-sequence library ssearch36 otherwise fits lambda/K from
-    # random shuffles, so the same window scored up to +-10% differently from run to run (2026-10-25)
+    # random shuffles, so the same window scored up to +-10% differently from run to run
     if ssearch36 -z 3 "${args[@]}" > "$out" 2> "$out.err"; then rm -f "$out.err"; [[ -z "$short" ]] || rm -rf "$short"; return 0; fi
     sleep "$k"
   done
@@ -262,8 +265,8 @@ export -f ss_retry
 # ── scan-only: skip PASS1+2 entirely ────────────────────────────────────────
 if [[ "$SCAN_ONLY" == "1" ]]; then
   log "SCAN_ONLY mode: skipping PASS1+2, using input BED directly as merged regions"
-  # every row must be tab-separated chrom start end sp|... with a genome of the genome table: a row that is not
-  # would otherwise be dropped by scan_region without a trace (GLM audit 2026-10-24)
+  # every row must be tab-separated chrom start end sp|... with a genome of the genome table; any other row
+  # stops the run here
   awk -F'\t' 'NR==FNR{g[$1]=1; next} /^[ \t]*$|^#/{next}
     { i=index($4,"|"); sp=(i>1?substr($4,1,i-1):"")
       if(NF<4 || $2!~/^[0-9]+$/ || $3!~/^[0-9]+$/ || !(sp in g)){ print "FATAL: scan-only BED row " FNR " is not chrom<TAB>start<TAB>end<TAB>sp|... with a known genome: " $0 > "/dev/stderr"; bad=1; exit } }
@@ -382,7 +385,7 @@ expand_locus(){
       printf "%s:%d-%d\n" "$chrom" "${WIN_S1[$j]}" "${WIN_E1[$j]}" >> "$regions_file"
     done
     if [[ "$n_wins" -gt 0 ]]; then
-      # a failed batch fetch is an error: it used to give an empty batch and 'signal_lost' at 0 bp (GLM audit #20)
+      # a failed batch fetch is an error, not an empty batch (which would read as 'signal_lost' at 0 bp)
       samtools faidx "$genome" --region-file "$regions_file" > "${WDIR}/batch_${end}.raw" \
         || { echo "FATAL: samtools faidx $genome --region-file failed for $name" >&2; rm -rf "$WDIR"; return 1; }
       awk '/^>/{idx++; print ">"idx; next}{print}' "${WDIR}/batch_${end}.raw" > "$batch_fa"
@@ -563,8 +566,7 @@ log "PASS1 expand (parallel --jobs $JOBS): step_bp=$STEP_BP win_bp=$WIN_BP min_b
 
 EXPAND_OUT="${TMPROOT}/expand_results.tsv"
 
-# Skip blank lines, comments and a literal header row only. (An earlier version also
-# dropped every row whose scaffold name begins with "Chr", i.e. all chromosome-named assemblies.)
+# Skip blank lines, comments and a literal header row only (first field exactly chrom, CHROM, Chr or chr).
 grep -v -E '^\s*$|^#' "$BED" | awk 'BEGIN{FS="[ \t]+"} !($1=="chrom"||$1=="CHROM"||$1=="Chr"||$1=="chr")' \
   | parallel --jobs "$JOBS" --keep-order --halt never \
       expand_locus "$TMPROOT" {} "$GENOME_MAP" "$CONS_X" "$CONS" \
@@ -605,7 +607,7 @@ fi  # end non-scan-only block (PASS1+2)
 
 # ============================================================================
 # scan_region worker (PASS 3)
-# Per-window ssearch36 matches original score behavior exactly.
+# One ssearch36 call per window.
 # Batching shifts bits scores ~1-3 due to ssearch36 E-value calibration
 # across multiple queries, so we keep per-window calls here.
 # ============================================================================
@@ -617,8 +619,8 @@ scan_region(){
   IFS=$'\t' read -r chrom start0 end0 tag <<<"$line"
   sp="${tag%%|*}"
   genome=$(awk -v S="$sp" 'BEGIN{FS="\t"} $1==S{print $2; exit}' "$GENOME_MAP")
-  # an unknown genome or a failed tool call is an error (parallel reports the job, pipefail stops the script);
-  # it used to give "no windows" silently (GLM audit 2026-10-24)
+  # an unknown genome or a failed tool call is an error (parallel reports the job, pipefail stops the script),
+  # never a silent "no windows"
   [[ -n "$genome" ]] || { echo "FATAL scan_region: genome '$sp' of '$tag' not in $GENOME_MAP" >&2; return 1; }
 
   local scan_start=$((start0+1))

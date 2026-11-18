@@ -13,8 +13,7 @@ IN="${1:-}"
 [[ -n "$IN" && -s "$IN" ]] || { echo "ERROR: input fasta missing/empty" >&2; exit 2; }
 
 # The position is field 2 of the header (sp|SCAFFOLD:START-END|...), split at its LAST ':' so any contig
-# name works. A header without it is an error: it used to be dropped silently, and the old pattern
-# ([A-Za-z0-9_.-]+:start-end anywhere) misread contig names holding other characters (GLM audit 2026-10-24).
+# name works. A header without it is an error.
 awk 'BEGIN{OFS="\t"}
 /^>/{
   hdr=substr($0,2)

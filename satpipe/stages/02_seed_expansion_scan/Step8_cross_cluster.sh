@@ -6,7 +6,7 @@
 # length and processes equal lengths in input order.
 #
 # Usage: Step8_cross_cluster.sh <clusters_by_file_dir> <rotated_references.fa> [out_dir]
-# Environment (defaults = published Darevskia run):
+# Environment variables [default]:
 #   CROSS_CLUSTER_ID  vsearch --id               [0.90]
 #   STRAND            vsearch --strand           [plus]
 # Output (in out_dir): all7_pooled.degap.fa, cross_species_centroids.fa, cross_species.uc,
@@ -20,7 +20,7 @@ command -v vsearch >/dev/null 2>&1 || { echo "Error: vsearch not found in PATH" 
 mkdir -p "$OUT/cross_clusters"
 rm -f "$OUT"/cross_clusters/clust_*
 # every per-genome cluster of 2+ loci must have its rotated alignment (Step 7); a missing one would drop its loci
-# from the pool without a word (GLM audit #48)
+# from the pool without a word
 miss=0
 for f in "$CB"/*/*_cluster_*.fa; do
   [ -e "$f" ] || continue

@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: Step6.sh [input_dir] [output_dir]
 #   input_dir   where the .rot files live                     [default: .]
 #   output_dir  receives one subfolder per .rot input         [default: clusters_by_file]
-# Environment (defaults = published Darevskia run):
+# Environment variables [default]:
 #   CLUSTER_ID  vsearch --id                                  [0.90]
 #   STRAND      vsearch --strand (plus | both)                [plus]
 
@@ -32,7 +32,7 @@ for infa in "$INPUT_DIR"/*.rot; do
 
   # run vsearch and ask it to write cluster files with the given prefix inside base_dir.
   # vsearch numbers them cluster_${base}_0, cluster_${base}_1, ... (no zero padding) in
-  # the order clusters were created. See PIPELINE.md Step 5/6 for the strand choice.
+  # the order clusters were created.
   rm -f "$base_dir"/cluster_"$base"_* "$base_dir/${base}"_cluster_*.fa
   # Step 7 writes one <base>_cluster_N_rotated/ folder per cluster and never removes them; folders left by an earlier
   # clustering (other motif set, other strand, other cluster numbers) would be pooled by Step 8 as if current

@@ -6,7 +6,7 @@ set -euo pipefail
 #   dat_dir   directory searched (recursively) for *.dat files; the basename of each .dat file
 #             is the species code written into every FASTA header            [default: .]
 #   out_dir   output directory, one <code>.fa per .dat                          [default: motifs_output]
-# Environment (defaults = published Darevskia run):
+# Environment variables [default]:
 #   PERIOD_MIN  minimum TRF period accepted                                    [80]
 #   PERIOD_MAX  maximum TRF period accepted                                    [300]
 #   MIN_COPIES  minimum TRF copy number accepted                               [10]

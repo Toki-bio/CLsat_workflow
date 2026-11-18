@@ -7,10 +7,6 @@ Classes, tested in this order:
   lowcomplex  simple sequence that is not telomeric: the share of the possible distinct 4-letter words that occur
               is below 0.5. "Possible" is min(256, len - 3): a 600-letter flank can hold at most 256 distinct words.
   unique      everything else
-
-Fixed 2026-10-17. The earlier test divided the distinct-word count by the flank length (len - 3) and rejected below
-0.35. In a 600-letter flank that ratio cannot exceed 256/597 = 0.43, so it rejected 65% of random 600-letter windows
-of the D. unisexualis unm assembly (1 307 of 2 000). The scaled test rejects 2.5% (49 of 2 000).
 """
 
 TELO_MOTIFS = ('TTAGGG', 'CCCTAA')
