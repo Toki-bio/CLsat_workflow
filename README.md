@@ -44,6 +44,24 @@ The pipeline itself needs TRF, VSEARCH, MAFFT, FASTA (`ssearch36`), samtools, be
 parallel, minimap2, `gawk` (not mawk), `jq`, python3 (stage scripts) and, for optional stages, EMBOSS and BLAST+. `satpipe check` reports
 which are missing and which stages they block.
 
+## Run with a container
+
+The image holds every external tool at the published-run versions (`environment.yml`) and this repository at
+`/opt/satpipe/src`; nothing else is installed. Data and the run directory stay outside the image.
+
+```bash
+# Apptainer (no root): build once. Where --fakeroot cannot map uids (no newuidmap), this worked:
+apptainer build --fakeroot --ignore-subuid --ignore-fakeroot-command satpipe.sif containers/satpipe.def
+apptainer exec satpipe.sif satpipe check my.yaml
+apptainer exec --bind /path/to/data satpipe.sif satpipe run my.yaml     # paths in my.yaml must be visible inside
+# Docker
+docker build -f containers/Dockerfile -t satpipe .
+docker run --rm -v "$PWD":/work -w /work satpipe check my.yaml
+```
+
+Tests inside the image: `apptainer exec satpipe.sif bash -c 'cd /opt/satpipe/src && bash tests/run_all.sh'`.
+The Dockerfile has not been built (no Docker on the build host); the Apptainer definition is the tested one.
+
 ## Use
 
 ```bash

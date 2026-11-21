@@ -1,24 +1,27 @@
-# conda environment with every external tool satpipe calls (versions of the published run where
-# the channel still has them; newer builds are fine, ssearch36 bit scores vary between runs anyway).
+# conda environment with every external tool satpipe calls, pinned to the versions of the published run
+# (HANDOFF.md, "Versions used for the published run") where the channels have them; ssearch36 bit scores
+# vary slightly between runs anyway.
 #   conda env create -f environment.yml && conda activate satpipe && export PATH=$PWD/bin:$PATH
 # The driver (bin/satpipe) is bash + gawk + jq; python3 runs the Python stage scripts only.
+# gawk must be real GNU gawk (PROCINFO["sorted_in"], asorti, 3-argument match), never mawk.
 name: satpipe
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python>=3.10
+  - python=3.12
+  - numpy=2.3
   - pytest
-  - trf>=4.09
-  - vsearch>=2.22
-  - mafft>=7.5
-  - fasta3            # ssearch36
-  - emboss            # cons, needle, water
-  - blast>=2.12       # blastn, makeblastdb (stage 07 only)
-  - samtools>=1.12
-  - bedtools>=2.30
+  - trf=4.10.0rc2     # 4.10.0-rc.2 in the published run
+  - vsearch=2.30.0
+  - mafft=7.526
+  - fasta3            # ssearch36; the published run used 36.3.8e, which the solver did not find in these channels (a build gives 36.3.8g)
+  - emboss=6.6.0      # cons, needle, water
+  - blast=2.17.0      # blastn, makeblastdb (stage 07 only)
+  - samtools=1.22.1
+  - bedtools=2.31.1
   - parallel
   - minimap2          # stage 16 hapdup rule, stage 19 copy test / repeat mask
   - jq
-  - gawk
+  - gawk>=5
   - bc

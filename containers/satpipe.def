@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.10
+
+%files
+    environment.yml /opt/satpipe/environment.yml
+    . /opt/satpipe/src
+
+%post
+    set -eu
+    micromamba install -y -n base -f /opt/satpipe/environment.yml
+    micromamba clean -a -y
+    # the driver is bash+gawk (no pip package): the repository is copied to /opt/satpipe/src
+    /opt/conda/bin/gawk --version | head -1
+    /opt/conda/bin/gawk 'BEGIN{PROCINFO["sorted_in"]="@ind_str_asc"; print "gawk ok"}'
+
+%environment
+    export PATH=/opt/satpipe/src/bin:/opt/conda/bin:$PATH
+    export LC_ALL=C
+
+%runscript
+    exec satpipe "$@"
+
+%test
+    satpipe --version
+    command -v ssearch36 trf vsearch mafft gawk jq >/dev/null
