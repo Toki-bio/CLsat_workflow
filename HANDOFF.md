@@ -237,3 +237,17 @@ Full run from the six GenBank assemblies (TRF regenerated, 85 Mb scaffold via ch
 - Segmented 627 (published 626 + L541 = 627), catalogue 628 (with the manual locus), ortholog pairs 53 (=), candidates 7 (=), 95 anchorable, 20 flagged, 27 contradiction rows.
 - Viewer built by `satpipe viewer`, headless-Chrome test passes (635 loci, 4 families, 3 lists 95/27/628; only favicon 404).
 - Not run here: sub-subfamily stage (subx/ only on DRAGEN -> empty table).
+
+## First de novo run on a new genome: apple (*Malus domestica*), DRAGEN, 2026-11-26
+
+Result and data: https://github.com/Toki-bio/Tal/tree/main/plants/mdo/minisat (README, peeled groups, consensuses, final catalogue, config).
+Genome GCF_042453785.1 (GDT2T hap1), 0 reference families at the start. What the run showed about the tool:
+
+- **Stage-aware check** (branch `check-stage-aware`): `satpipe run --to 04_filter` used to refuse to start because the family table, which only stage 09 reads, was empty. The check now takes the selected stages into account (`lib/satpipe/check.sh`, `run.sh`, `run_stages.tsv` needs column). The schema still requires `families` (>= 1) and `family_assignment` even for stages 02-08; making them optional for such runs touches `schema.tsv`, `validate.awk`, stage 00 tables, stages 02b/03/11-21 and the viewer, and was not done.
+- **A dummy family changes results before stage 09.** Stage 03 monomerize scans long motifs against the family consensuses (header coordinates of the monomerized seeds), and stage 02b classifies the arrays of scaffolds over `finalisation.large_scaffold_bp` (50 Mb) against them. With a dummy family consensus the largest apple chromosome (56.2 Mb, NC_091675.1) contributed no arrays to the first pass. A real run needs two passes: discovery to stage 08, peel, then a second run with the peeled consensuses as families.
+- **Stage 06-08 clustering is plus-strand only** (published behaviour, kept). In apple the 95 bp family was split into two clusters (92 and 83 motifs) by orientation. The peel used a phase- and strand-invariant comparison instead: each motif doubled, blastn both strands against all motifs, pair score = identity x covered fraction, groups = connected components at >= 0.70, medoid reference, orientation and rotation from the blastn hit, MAFFT `--localpair --maxiterate 1000`, consensus = majority base in columns with >= 50 % non-gap. The scripts are in the Tal folder's README description only; they are not part of satpipe. A strand/phase-invariant clustering option for stages 06-08 would make the manual peel unnecessary for most genomes.
+- **`anchor.independent: true`** was needed (the seven families are unrelated); stage 21 passed.
+- **Stage 19 (orthology)** has no meaning for a single genome; it ran and produced nothing useful. A way to skip it for one genome is wanted.
+- **Known gaps in `satpipe check`:** minimap2 is listed as needed by stages 16 and 19 but is not in `tools.tsv`; the genome message says stage 11 builds the `.fai` index, but stage 00 does.
+- Environment: no conda on this DRAGEN by default; `/staging/miniconda3/bin/mamba env create -p <dir> -f environment.yml` worked (ssearch36 36.3.8g, as the file says).
+- Timing: TRF on 651 Mb about 2 min on 16 threads; stages 09-21 about 40 min.
