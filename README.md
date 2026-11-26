@@ -81,7 +81,11 @@ A run from scratch: `satpipe run` runs TRF on every genome (stage 02; give `inpu
 extracts and clusters motifs, cross-clusters them with the family references prepended, and stops at
 stage 09 if the curated `family_assignment` table does not match the clusters it found. Look at
 `<run>/cross/cluster_report.tsv` (every cluster with its size, centroid and best family hit), write
-the table, run again. Everything after that is automatic: seeds, expansion, MASTER, rescan,
+the table, run again. A run limited with `--from/--to/--only` checks only what its stages need: a
+missing or incomplete table (or a tool, manual-loci BED, seed BED or sub-subfamily set used only by
+later stages) is a warning, not a failure, for `--to 08_cross` and earlier (`needs` and
+`check_sections` in `lib/satpipe/run_stages.tsv`); `satpipe check` and any run that includes stage 09
+still fail on it. Everything after that is automatic: seeds, expansion, MASTER, rescan,
 arbitration, catalogue (+ manual loci), regions, terminal monomers, sub-subfamilies (if consensuses
 are given), flank orthology, and `satpipe viewer` for the page.
 

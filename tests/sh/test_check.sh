@@ -147,4 +147,57 @@ t_unknown_anchor_family_and_tool_key_are_config_errors() {
 }
 check test_unknown_anchor_family_and_tool_key_are_config_errors t_unknown_anchor_family_and_tool_key_are_config_errors
 
-echo "test_check.sh: $N/12 passed"
+# --- stage scope of the check in `satpipe run` (check.sh _ck_scope, run.sh _run_scope; 2026-11-26)
+# runplan ARGS...  -> $OUT (stderr of `satpipe run --plan`: the check report or its scoped WARNs), $RC; nothing is written
+runplan() { RC=0; OUT=$("$SP" run "$@" --plan 2>&1 >/dev/null) || RC=$?; }
+# warned SECTION SUBSTRING   a FAIL turned WARN by the scope
+warned() { local l; while IFS= read -r l; do [[ $l == "satpipe run: [WARN] $1: "*"$2"*"(not a failure for this run: "* ]] && return 0; done <<< "$OUT"; return 1; }
+failline() { local l; while IFS= read -r l; do [[ $l == "[FAIL] $1: "*"$2"* ]] && return 0; done <<< "$OUT"; return 1; }
+
+t_early_range_family_table_is_warning() {   # (a) de novo discovery before the curated table exists
+    new_project; : > "$D/ref/cluster_family.tsv"
+    runplan "$CFG" --to 04_filter --skip-tool-check
+    [ "$RC" = 0 ] && warned family_assignment "family SatX has no cluster in the table" && [[ $OUT == *"only stage 09_assign needs it"* ]] || return 1
+    rm -f -- "$D/ref/cluster_family.tsv"                        # table not written yet at all
+    runplan "$CFG" --to 08_cross --skip-tool-check
+    [ "$RC" = 0 ] && warned family_assignment "table: file not found" || return 1
+    runplan "$CFG" --only 02_trf,03_motifs --skip-tool-check
+    [ "$RC" = 0 ] && warned family_assignment "table: file not found"
+}
+check test_early_range_family_table_is_warning t_early_range_family_table_is_warning
+
+t_range_with_stage_09_still_fails() {        # (b) the same table fails whenever stage 09 runs, and in `satpipe check`
+    new_project; : > "$D/ref/cluster_family.tsv"
+    local a
+    for a in "" "--to 09_assign" "--from 08_cross --to 10_seeds" "--only 04_filter,09_assign" "--from 00_tables"; do
+        # shellcheck disable=SC2086
+        runplan "$CFG" $a --skip-tool-check
+        [ "$RC" = 1 ] && failline family_assignment "family SatX has no cluster in the table" \
+            && [[ $OUT == *"refusing to start"* ]] && [[ $OUT != *"not a failure for this run"* ]] || { echo "range '$a'"; return 1; }
+    done
+    report "$CFG" --no-tools
+    failed && has FAIL family_assignment "family SatX has no cluster in the table" && ! has - stages "check scoped"
+}
+check test_range_with_stage_09_still_fails t_range_with_stage_09_still_fails
+
+t_later_stage_tool_missing_is_warning() {    # (c) a tool only later stages need: WARN for an early range, FAIL once a stage needs it
+    new_project; local fb=$TMP/fakebin$N t
+    mkdir -p "$fb"
+    ln -s "$(command -v bash)" "$fb/bash"; ln -s "$(command -v "${SATPIPE_GAWK:-gawk}")" "$fb/gawk"
+    _fake() { printf '#!/bin/sh\necho "%s"\n' "$2" > "$fb/$1"; chmod 755 "$fb/$1"; }
+    _fake trf 'Tandem Repeats Finder, Version 4.10.0'; _fake parallel 'GNU parallel 20240122'
+    _fake samtools 'samtools 1.22.1'; _fake python3 'Python 3.12.11'; _fake ssearch36 ' version: 36.3.8h'
+    # missing on purpose: vsearch (06, 08), mafft (07), bedtools (11+)
+    RC=0; OUT=$(PATH=$fb SATPIPE_GAWK=$fb/gawk "$fb/bash" "$SP" run "$CFG" --to 04_filter --plan 2>&1 >/dev/null) || RC=$?
+    [ "$RC" = 0 ] || { printf '%s\n' "$OUT" | tail -n 20; return 1; }
+    for t in vsearch mafft bedtools; do warned tools "$t: not found" || { echo "no WARN for $t"; return 1; }; done
+    RC=0; OUT=$(PATH=$fb SATPIPE_GAWK=$fb/gawk "$fb/bash" "$SP" run "$CFG" --to 08_cross --plan 2>&1 >/dev/null) || RC=$?
+    [ "$RC" = 1 ] && failline tools "vsearch: not found" && failline tools "mafft: not found" || return 1
+    [[ $OUT == *"[WARN] tools: bedtools: not found"*"(not a failure for this run: only stages "*"12_master"* ]] || return 1
+    rm -f -- "$fb/trf"                                          # a tool the early range itself needs still fails
+    RC=0; OUT=$(PATH=$fb SATPIPE_GAWK=$fb/gawk "$fb/bash" "$SP" run "$CFG" --to 04_filter --plan 2>&1 >/dev/null) || RC=$?
+    [ "$RC" = 1 ] && failline tools "trf: not found"
+}
+check test_later_stage_tool_missing_is_warning t_later_stage_tool_missing_is_warning
+
+echo "test_check.sh: $N/15 passed"

@@ -9,6 +9,14 @@
 #   check_cleanup                        removes $CHECK_ITEMS and $CFG_FLAT
 #   check_main CONFIG NO_FILES NO_TOOLS JSON   cmd_check: prints the report, returns 1 when it failed, else 0
 #
+# Stage scope (bash only, 2026-11-26): when CHECK_SCOPE is set (space-separated stage ids; run.sh sets it for a run with
+# --from/--to/--only), a FAIL that only matters to stages outside the scope becomes a WARN with a note. Which stages need
+# what comes from run_stages.tsv: column `needs` (tools; a tool listed for no stage, e.g. bash, is never scoped) and column
+# `check_sections` (report sections whose input files the stage reads: family_assignment, inputs.seeds, manual_loci,
+# subfamily; a section listed for no stage, e.g. genomes or families, is never scoped); section `paths` (the FASTA36 path
+# limit) belongs to the stages that need ssearch36. CHECK_SCOPE unset (`satpipe check`, `satpipe anchor`, a run of every
+# stage) = no scoping, the report is unchanged.
+#
 # Test hook: SATPIPE_MAX_BASE_PATH (default 70) replaces check.py MAX_BASE_PATH (check.py:228), which the Python tests
 # monkeypatch (conftest.py:12-17, test_check.py:112-117).
 
@@ -20,6 +28,7 @@ _SATPIPE_CHECK_SH=1
 . "$SATPIPE_LIB/tools.sh"
 
 SATPIPE_MAX_BASE_PATH=${SATPIPE_MAX_BASE_PATH:-70}
+unset CHECK_SCOPE                  # set only by run.sh, never inherited from the caller's environment
 
 _ck() { "$GAWK" -f "$PYJSON" -f "$SATPIPE_LIB/check.awk" -e "BEGIN { $1() }" < /dev/null; }
 _ck_unesc() { S=$1 "$GAWK" -f "$PYJSON" -e 'BEGIN { printf "%s", flat_unesc(ENVIRON["S"]) }' < /dev/null; }
@@ -229,6 +238,36 @@ _ck_scripts() {
     printf '%s\t%s' "$total" "$miss"
 }
 
+# _ck_scope   rewrites $CHECK_ITEMS for the stage scope CHECK_SCOPE (header): FAIL -> WARN + note for a tool or section that
+#             no selected stage needs; adds an OK item naming the scope
+_ck_scope() {
+    SCOPE=$CHECK_SCOPE "$GAWK" -F '\t' -v OFS='\t' '
+        FNR == 1 { file++ }
+        file == 1 {
+            sub(/\r$/, "")
+            if ($1 == "" || $1 ~ /^#/) next
+            id = $1; sel = (id in SEL)
+            n = split($2, t, ","); for (i = 1; i <= n; i++) if (t[i] != "") add("tool", t[i], id, sel)
+            if (index("," $2 ",", ",ssearch36,")) add("sec", "paths", id, sel)
+            n = split($3, t, ","); for (i = 1; i <= n; i++) if (t[i] != "") add("sec", t[i], id, sel)
+            next
+        }
+        $1 == "FAIL" {
+            k = ""
+            if ($2 == "tools") { nm = $3; sub(/[: ].*/, "", nm); if (("tool" SUBSEP nm) in WHO) k = "tool" SUBSEP nm }
+            else if (("sec" SUBSEP $2) in WHO) k = "sec" SUBSEP $2
+            if (k != "" && !(k in USED)) {
+                $1 = "WARN"
+                $3 = $3 " (not a failure for this run: only stage" (index(WHO[k], " ") ? "s " : " ") WHO[k] " need" (index(WHO[k], " ") ? "" : "s") " it, and the selected stages do not include " (index(WHO[k], " ") ? "them" : "it") ")"
+            }
+        }
+        { print }
+        END { printf "OK\tstages\tcheck scoped to the selected stages: %s\n", (SCOPE == "" ? "(none)" : SCOPE) }
+        function add(kind, name, id, sel) { WHO[kind, name] = WHO[kind, name] (WHO[kind, name] == "" ? "" : " ") id; if (sel) USED[kind, name] = 1 }
+        BEGIN { SCOPE = ENVIRON["SCOPE"]; n = split(SCOPE, s, " "); for (i = 1; i <= n; i++) SEL[s[i]] = 1 }
+    ' "$SATPIPE_LIB/run_stages.tsv" "$CHECK_ITEMS" > "$CHECK_ITEMS.scoped" && mv -f -- "$CHECK_ITEMS.scoped" "$CHECK_ITEMS"
+}
+
 check_run() {
     local file=$1 do_files=$2 do_tools=$3 abs e w sc
     CHECK_ITEMS=$(mktemp "${TMPDIR:-/tmp}/satpipe_check.XXXXXX")
@@ -252,6 +291,7 @@ check_run() {
         else _ck_add OK package "${sc%%$'\t'*} stage script references present"; fi
         if [ "$do_files" = 1 ]; then _ck_files; fi
         if [ "$do_tools" = 1 ]; then _ck_tools "$CFG_FLAT"; fi
+        if [ -n "${CHECK_SCOPE+x}" ]; then _ck_scope; fi
     fi
     if "$GAWK" -F '\t' '$1 == "FAIL" { f = 1; exit } END { exit !f }' "$CHECK_ITEMS"; then CHECK_FAILED=1; fi
     return 0

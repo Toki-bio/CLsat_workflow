@@ -78,6 +78,34 @@ _run_select() {
     return 0
 }
 
+# _run_scope   CHECK_SCOPE for check_run (check.sh header): the stages --from/--to/--only select, as _run_select does but
+#              before the config is loaded, so without the seeds-given skip (a run that skips 09 for given seeds still has its
+#              table checked as today). Left unset when no option is given, when the selection is every stage, or when an
+#              option is invalid (_run_select reports that after the check, as before).
+_run_scope() {
+    unset CHECK_SCOPE
+    [ -n "${AP_from_stage:-}${AP_to_stage:-}${AP_only:-}" ] || return 0
+    local -a sel=("${STAGE_IDS[@]}") only=() keep=()
+    local i j s found
+    if [ -n "${AP_from_stage:-}" ]; then
+        found=-1; for ((j = 0; j < ${#sel[@]}; j++)); do [ "${sel[$j]}" = "$AP_from_stage" ] && found=$j; done
+        [ $found -ge 0 ] || return 0
+        sel=("${sel[@]:$found}")
+    fi
+    if [ -n "${AP_to_stage:-}" ]; then
+        found=-1; for ((j = 0; j < ${#sel[@]}; j++)); do [ "${sel[$j]}" = "$AP_to_stage" ] && found=$j; done
+        [ $found -ge 0 ] || return 0
+        sel=("${sel[@]:0:$((found + 1))}")
+    fi
+    if [ -n "${AP_only:-}" ]; then
+        IFS=, read -r -a only <<< "$AP_only"
+        for s in "${sel[@]}"; do found=0; for i in "${only[@]}"; do [ "$i" = "$s" ] && found=1; done; [ $found = 1 ] && keep+=("$s"); done
+        sel=("${keep[@]}")
+    fi
+    [ "${sel[*]}" = "${STAGE_IDS[*]}" ] && return 0
+    CHECK_SCOPE="${sel[*]}"
+}
+
 _in_sel() { local s; for s in "${SEL[@]}"; do [ "$s" = "$1" ] && return 0; done; return 1; }
 
 # _run_tools_json   manifest.tools: {name: {path, version, error}} (run.py:1124, tools.py:80-108)
@@ -102,11 +130,15 @@ _run_tools_json() {
 run_main() {
     local cfgfile=$1 sid c
     SATPIPE_FORCE=${AP_force:-0}; export SATPIPE_FORCE
+    _run_scope
     check_run "$cfgfile" 1 "$((1 - ${AP_skip_tool_check:-0}))"
     if [ "$CHECK_FAILED" = 1 ]; then
         check_render text >&2
         printf 'satpipe run: refusing to start, fix the check failures above (or --skip-tool-check)\n' >&2
         check_cleanup; return 1
+    fi
+    if [ -n "${CHECK_SCOPE+x}" ]; then                # the FAILs the stage scope turned into WARNs (check.sh _ck_scope)
+        check_render text | "$GAWK" '/^\[WARN\] .*\(not a failure for this run: / { print "satpipe run: " $0 }' >&2
     fi
     stages_load
     RUN=$(cfg out_dir)
